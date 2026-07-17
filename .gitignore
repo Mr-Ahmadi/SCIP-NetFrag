@@ -1,0 +1,6 @@
+__pycache__/
+__paper/
+*.pyc
+.DS_Store
+*.pdf
+plots/
