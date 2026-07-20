@@ -42,7 +42,6 @@ BLOCKS = {
     "starttime":          "Block #2: start time experiment",
     "timewindow":         "Block #3: time window experiment",
     "distribution":       "Block #4: distribution experiment",
-    "all":                "run every block",
 }
 
 
@@ -1067,12 +1066,4 @@ BLOCK_RUNNERS = {
 
 if __name__ == "__main__":
     RUN_BLOCK = _prompt_block()
-
-    if RUN_BLOCK == "all":
-        for name, runner in BLOCK_RUNNERS.items():
-            print(f"\n{'='*60}")
-            print(f"  Running block: {name}")
-            print(f"{'='*60}\n")
-            runner()
-    else:
-        BLOCK_RUNNERS[RUN_BLOCK]()
+    BLOCK_RUNNERS[RUN_BLOCK]()
