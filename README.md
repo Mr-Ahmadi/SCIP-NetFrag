@@ -25,13 +25,13 @@ You will be prompted to select an experiment block:
 ```
 === Experiment Blocks ===
 
-  basic              — Block #1: basic comparison
-  aggregation        — Block #1b: aggregation (4 models, 2-cluster env)
-  percentage         — Block #1c: percentage experiment (2-cluster env)
-  percentage_1cluster— Block #1d: percentage experiment (1-cluster env)
-  starttime          — Block #2: start time experiment
-  timewindow         — Block #3: time window experiment
-  distribution       — Block #4: distribution experiment
+  baseline         — Block #1: baseline comparison
+  models           — Block #1b: model comparison (4 models, 2-cluster env)
+  pct_2cluster     — Block #1c: switch percentage (2-cluster env)
+  pct_1cluster     — Block #1d: switch percentage (1-cluster env)
+  start_time       — Block #2: start time experiment
+  time_window      — Block #3: time window experiment
+  worker_dist      — Block #4: worker distribution experiment
   all                — run every block
 ```
 
@@ -67,13 +67,13 @@ SCIP-NetFrag/
 
 ## Experiment Blocks
 
-- **basic** — Compares optimal model vs FlexINA across aggregation levels (max 1-3). Uses `env_1Cluster_Test`.
-- **aggregation** — Compares 4 models (FixR-ToRS, FixR-AS, FlexR-ToRS, FlexINA) across aggregation levels. Uses `env_2Clusters`.
-- **percentage** — Studies effect of switch selection percentage (10%-70%) on fragments and runtime. Uses `env_2Clusters_Percentages`.
-- **percentage_1cluster** — Same as percentage but on the smaller `env_1Cluster_Test` environment.
-- **starttime** — Varies the start time window (8-11 slots). Uses `env_2Clusters`.
-- **timewindow** — Varies the time window percentage (40%-100%). Uses `env_1Cluster_Test`.
-- **distribution** — Compares uniform vs Zipf worker distributions. Uses all 2-cluster environments.
+- **baseline** — Compares optimal model vs FlexINA across aggregation levels (max 1-3). Uses `env_1Cluster_Test`.
+- **models** — Compares 4 models (FixR-ToRS, FixR-AS, FlexR-ToRS, FlexINA) across aggregation levels. Uses `env_2Clusters`.
+- **pct_2cluster** — Studies effect of switch selection percentage (10%-70%) on fragments and runtime. Uses `env_2Clusters_Percentages`.
+- **pct_1cluster** — Same as pct_2cluster but on the smaller `env_1Cluster_Test` environment.
+- **start_time** — Varies the start time window (8-11 slots). Uses `env_2Clusters`.
+- **time_window** — Varies the time window percentage (40%-100%). Uses `env_1Cluster_Test`.
+- **worker_dist** — Compares uniform vs Zipf worker distributions. Uses all 2-cluster environments.
 
 ## Output
 

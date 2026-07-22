@@ -741,3 +741,167 @@ def defineModel_selectedSwitches(allofSubsets1, pSwitchesTopology, pSwitchPorts,
 
     return (model, Z_Variables, Y_Variables, len(Y_Variables), len(Z_Variables),
             clusterSets, switchinClusters, AllClusters)
+
+
+# ---------------------------------------------------------------------------
+# defineModel_InArt  (InArt baseline — single aggregation per fragment)
+# InArt assumes each fragment is routed on ONE path and aggregated at
+# AT MOST ONE switch.  We model this by reusing the same variable
+# structure as FlexINA but the InArt constraint (constraintInArt) will
+# enforce that each fragment participates in at most one Z-variable.
+# ---------------------------------------------------------------------------
+
+def defineModel_InArt(allofSubsets1, pSwitchesTopology, pSwitchPorts,
+                      T_max_1, T_max_2, workersTopology,
+                      fragmentsofEachWorker, pWorkerPorts,
+                      subSets1, numberSlotsSwitches, usefulIntervalTime1,
+                      Y_Used, Z_Used, maxAggregation, stepsToSwitches,
+                      cutPorts, selectedSwitches, Persentage, clusters):
+    from pyscipopt import Model
+    model = Model("InArt_Baseline")
+    clustersFragment, AllClusters = _setup_clusters(clusters, workersTopology, fragmentsofEachWorker)
+    hameSwitches = []
+
+    Y_Variables = dict()
+    for i in clustersFragment:
+        switchesCluster = clusters[i]
+        subSetsss, allofSubsetssss, usefulIntervalTimeeee, fragmentssss = \
+            create_Fragments(clustersFragment[i], T_max_1, T_max_2, maxAggregation)
+        for frags in allofSubsetssss:
+            for fragments in frags:
+                for switches in switchesCluster:
+                    hameSwitches.append(switches)
+                    for ports in pSwitchPorts[switches]:
+                        for time in range(T_max_1, T_max_2):
+                            keyDictY = (frozenset(fragments), switches, ports, time)
+                            if len(fragments) == 1:
+                                tempWorker = find_keys_by_value(fragments, fragmentsofEachWorker)[0]
+                                stepSwitch = stepsToSwitches[tempWorker][switches]
+                                if time >= stepSwitch + T_max_1:
+                                    if keyDictY not in Y_Used:
+                                        Y_Variables[keyDictY] = model.addVar(
+                                            vtype='B',
+                                            name="Y{F},{S},{R},{T}".format(
+                                                F=fragments, S=switches, R=ports, T=time))
+                            elif keyDictY not in Y_Used:
+                                Y_Variables[keyDictY] = model.addVar(
+                                    vtype='B',
+                                    name="Y{F},{S},{R},{T}".format(
+                                        F=fragments, S=switches, R=ports, T=time))
+
+    for frags in allofSubsets1:
+        for fragments in frags:
+            for switches in pSwitchesTopology:
+                if switches not in hameSwitches:
+                    for ports in pSwitchPorts[switches]:
+                        for time in range(T_max_1, T_max_2):
+                            keyDictY = (frozenset(fragments), switches, ports, time)
+                            if len(fragments) == 1:
+                                tempWorker = find_keys_by_value(fragments, fragmentsofEachWorker)[0]
+                                stepSwitch = stepsToSwitches[tempWorker][switches]
+                                if time >= stepSwitch + T_max_1:
+                                    if keyDictY not in Y_Used:
+                                        Y_Variables[keyDictY] = model.addVar(
+                                            vtype='B',
+                                            name="Y{F},{S},{R},{T}".format(
+                                                F=fragments, S=switches, R=ports, T=time))
+                            elif keyDictY not in Y_Used:
+                                Y_Variables[keyDictY] = model.addVar(
+                                    vtype='B',
+                                    name="Y{F},{S},{R},{T}".format(
+                                        F=fragments, S=switches, R=ports, T=time))
+
+    for worker in workersTopology:
+        for frag in fragmentsofEachWorker[worker]:
+            for port in pWorkerPorts[worker]:
+                for time in range(T_max_1, T_max_2):
+                    fragg = {frag}
+                    keyDictY = (frozenset(fragg), worker, port, time)
+                    if keyDictY not in Y_Used:
+                        Y_Variables[keyDictY] = model.addVar(
+                            vtype='B',
+                            name="Y{F},{S},{R},{T}".format(
+                                F=fragg, S=worker, R=port, T=time))
+
+    Z_Variables = dict()
+    lenSelectedSwitches = int(Persentage * len(selectedSwitches))
+    selectedSwitches1 = selectedSwitches[0:lenSelectedSwitches]
+
+    clusterSets = []
+    switchinClusters = []
+    for i in clustersFragment:
+        switches11 = []
+        switchesCluster = clusters[i]
+        for ss in switchesCluster:
+            if ss in selectedSwitches1:
+                switches11.append(ss)
+        switchinClusters.append(switches11)
+        subSets, allofSubsets, usefulIntervalTime, fragments = \
+            create_Fragments(clustersFragment[i], T_max_1, T_max_2, maxAggregation)
+        temp1, temp2 = [], []
+        for sub in subSets:
+            for subSub in sub:
+                for switches in switches11:
+                    for slots in numberSlotsSwitches[switches]:
+                        for timesNumber in usefulIntervalTime:
+                            flagDec = False
+                            set_of_sets = {frozenset(s) for s in subSub}
+                            if len(subSub) <= maxAggregation:
+                                keyDictZ = (frozenset(set_of_sets), slots, switches,
+                                            timesNumber[0], timesNumber[1])
+                                tempCheck = [miel for miel in subSub if len(miel) == 1]
+                                for check in tempCheck:
+                                    tempWorker = find_keys_by_value(check, fragmentsofEachWorker)[0]
+                                    stepSwitch = stepsToSwitches[tempWorker][switches]
+                                    if stepSwitch + T_max_1 > timesNumber[0]:
+                                        flagDec = True
+                                if keyDictZ not in Z_Used:
+                                    if len(subSub) == 1:
+                                        temp2.append(usefulIntervalTime)
+                                    elif flagDec == False:
+                                        temp1.append(subSub)
+                                        temp2.append(usefulIntervalTime)
+                                        Z_Variables[keyDictZ] = model.addVar(
+                                            vtype='B',
+                                            name="Z{F},{M},{S},{t1},{t2}".format(
+                                                F=subSub, M=slots, S=switches,
+                                                t1=timesNumber[0], t2=timesNumber[1]))
+        temp11 = []
+        for _item in temp1:
+            if _item not in temp11:
+                temp11.append(_item)
+        temp22 = []
+        for _item in temp2:
+            if _item not in temp22:
+                temp22.append(_item)
+        clusterSets.append([temp11, temp22])
+
+    for o in selectedSwitches1:
+        if o not in AllClusters:
+            for sub in subSets1:
+                for subSub in sub:
+                    for slots in numberSlotsSwitches[o]:
+                        for timesNumber in usefulIntervalTime1:
+                            flagDec = False
+                            set_of_sets = {frozenset(s) for s in subSub}
+                            if len(subSub) <= maxAggregation:
+                                keyDictZ = (frozenset(set_of_sets), slots, o,
+                                            timesNumber[0], timesNumber[1])
+                                tempCheck = [miel for miel in subSub if len(miel) == 1]
+                                for check in tempCheck:
+                                    tempWorker = find_keys_by_value(check, fragmentsofEachWorker)[0]
+                                    stepSwitch = stepsToSwitches[tempWorker][o]
+                                    if stepSwitch + T_max_1 > timesNumber[0]:
+                                        flagDec = True
+                                if keyDictZ not in Z_Used:
+                                    if len(subSub) == 1:
+                                        pass
+                                    elif flagDec == False:
+                                        Z_Variables[keyDictZ] = model.addVar(
+                                            vtype='B',
+                                            name="Z{F},{M},{S},{t1},{t2}".format(
+                                                F=subSub, M=slots, S=o,
+                                                t1=timesNumber[0], t2=timesNumber[1]))
+
+    return (model, Z_Variables, Y_Variables, len(Y_Variables), len(Z_Variables),
+            clusterSets, switchinClusters, AllClusters)

@@ -37,6 +37,7 @@ from .models import (
     defineModel_GRID,
     defineModel_ATP_GRID,
     defineModel_selectedSwitches,
+    defineModel_InArt,
 )
 
 from .constraints import (
@@ -60,11 +61,12 @@ from .constraints import (
     constraintNum9,
     constraintNum10,
     constraintNum11,
+    constraintInArt,
 )
 
 from .solver import objective, solveProblem
 
-from .runner import apply_constraints, apply_constraints_basic
+from .runner import apply_constraints, apply_constraints_basic, apply_constraints_InArt
 
 from .plots import (
     plot_grouped_bars,

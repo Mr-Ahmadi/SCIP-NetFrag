@@ -861,3 +861,30 @@ def constraintNum11(pSwitchesTopology, subSets, model, workersTopology,
                             if keyDictY not in Y_Used:
                                 if keyDictY in Y_Variables:
                                     model.addCons(Y_Variables[keyDictY] == 0)
+
+
+# ---------------------------------------------------------------------------
+# Constraint InArt — single aggregation per fragment (InArt assumption)
+# Each fragment can be aggregated at AT MOST ONE switch globally.
+# This enforces: for each fragment f, sum of all Z_vars involving f <= 1.
+# ---------------------------------------------------------------------------
+
+def constraintInArt(subSets, model, Z_Used, workersTopology, fragmentsofEachWorker):
+    all_fragments = set()
+    for worker in fragmentsofEachWorker:
+        for frag in fragmentsofEachWorker[worker]:
+            all_fragments.add(frag)
+
+    for frag in all_fragments:
+        frag_set = frozenset({frag})
+        z_vars_for_frag = []
+        for key, var in Z_Variables.items():
+            if key in Z_Used:
+                continue
+            subset_of_sets = key[0]
+            for sub_frozen in subset_of_sets:
+                if frag_set <= sub_frozen:
+                    z_vars_for_frag.append(var)
+                    break
+        if len(z_vars_for_frag) > 0:
+            model.addCons(sum(z_vars_for_frag) <= 1)

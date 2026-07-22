@@ -136,3 +136,53 @@ def apply_constraints_basic(modelSolve, pSwitchesTopology, numberSlotsSwitches,
                     neighborsofEachSwitch, pSwitchPorts, numAllFrags, Y_Used)
     constraintNum11(pSwitchesTopology, subSets, model, workersTopology,
                     pSwitchPorts, Y_Used, T_max_1)
+
+
+def apply_constraints_InArt(modelSolve, pSwitchesTopology, numberSlotsSwitches,
+                            usefulIntervalTime, subSets, model, T_max_1, T_max_2,
+                            Z_Used, Y_Used, neighborsofEachSwitch, pSwitchPorts,
+                            workersTopology, fragmentsofEachWorker, pWorkerPorts,
+                            numAllFrags, clusterSets, switchinClusters, AllClusters,
+                            Y_Variables, Z_Variables):
+    """
+    Apply constraints for the InArt baseline.
+    Same as FlexINA cluster constraints + InArt single-aggregation constraint.
+    """
+    _cons.Y_Variables = Y_Variables
+    _cons.Z_Variables = Z_Variables
+    _cons.workersTopology = workersTopology
+
+    constraintNum3selectedSwitches(
+        pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
+        subSets, model, T_max_1, T_max_2, neighborsofEachSwitch,
+        pSwitchPorts, Z_Used, clusterSets, switchinClusters, AllClusters)
+
+    constraintNum4selectedSwitches(
+        pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
+        subSets, model, T_max_1, T_max_2, neighborsofEachSwitch,
+        pSwitchPorts, Z_Used, clusterSets, switchinClusters, AllClusters)
+
+    constraintNum7selectedSwitches(
+        pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
+        subSets, model, T_max_1, T_max_2, pSwitchPorts, Z_Used, Y_Used,
+        clusterSets, switchinClusters, AllClusters)
+
+    constraintNum5(workersTopology, fragmentsofEachWorker,
+                   pWorkerPorts, model, T_max_1, T_max_2, Y_Used)
+
+    constraintNum6(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
+                   subSets, model, T_max_1, T_max_2, neighborsofEachSwitch,
+                   pSwitchPorts, Z_Used, Y_Used)
+
+    constraintNum9(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
+                   neighborsofEachSwitch, pSwitchPorts, Y_Used)
+
+    constraintNum8(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
+                   neighborsofEachSwitch, pSwitchPorts, Y_Used)
+    constraintNum10(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
+                    neighborsofEachSwitch, pSwitchPorts, numAllFrags, Y_Used)
+    constraintNum11(pSwitchesTopology, subSets, model, workersTopology,
+                    pSwitchPorts, Y_Used, T_max_1)
+
+    from .constraints import constraintInArt
+    constraintInArt(subSets, model, Z_Used, workersTopology, fragmentsofEachWorker)

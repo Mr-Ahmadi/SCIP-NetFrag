@@ -23,25 +23,27 @@ from sim import (
     defineModel_GRID,
     defineModel_ATP_GRID,
     defineModel_selectedSwitches,
+    defineModel_InArt,
     create_Fragments,
     preProcessMappingY,
     preProcessMappingZ,
     TimeoutError,
     _timeout_handler,
 )
-from sim.runner import apply_constraints, apply_constraints_basic
+from sim.runner import apply_constraints, apply_constraints_basic, apply_constraints_InArt
 from sim.solver import objective, solveProblem
 from sim.plots import plot_grouped_bars, plot_errorbar, plot_single_bars
 
 
 BLOCKS = {
-    "basic":              "Block #1: basic comparison",
-    "aggregation":        "Block #1b: aggregation (4 models, 2-cluster env)",
-    "percentage":         "Block #1c: percentage experiment (2-cluster env)",
-    "percentage_1cluster":"Block #1d: percentage experiment (1-cluster env)",
-    "starttime":          "Block #2: start time experiment",
-    "timewindow":         "Block #3: time window experiment",
-    "distribution":       "Block #4: distribution experiment",
+    "baseline":     "Block #1: baseline comparison",
+    "models":       "Block #1b: model comparison (4 models, 2-cluster env)",
+    "pct_2cluster": "Block #1c: switch percentage (2-cluster env)",
+    "pct_1cluster": "Block #1d: switch percentage (1-cluster env)",
+    "start_time":   "Block #2: start time experiment",
+    "time_window":  "Block #3: time window experiment",
+    "worker_dist":  "Block #4: worker distribution experiment",
+    "inart":        "Block #5: InArt vs FlexINA comparison",
 }
 
 
@@ -50,12 +52,12 @@ def _prompt_block():
     for key, desc in BLOCKS.items():
         print(f"  {key:15s} — {desc}")
     print()
-    choice = input("Enter block to run [basic]: ").strip()
+    choice = input("Enter block to run [baseline]: ").strip()
     if not choice:
-        choice = "basic"
+        choice = "baseline"
     if choice not in BLOCKS:
-        print(f"Unknown block '{choice}', defaulting to 'basic'")
-        choice = "basic"
+        print(f"Unknown block '{choice}', defaulting to 'baseline'")
+        choice = "baseline"
     return choice
 
 
@@ -70,10 +72,10 @@ def _prepare_dict_list(fragmentsofEachWorker, totalWorkers):
 
 
 # ============================================================
-# Block #1 — basic comparison
+# Block #1 — baseline comparison
 # ============================================================
 
-def run_basic():
+def run_baseline():
     envs = [env_1Cluster_Test]
     models = [defineModel, defineModel_selectedSwitches]
 
@@ -230,10 +232,10 @@ def run_basic():
 
 
 # ============================================================
-# Block #1b — aggregation (4 models)
+# Block #1b — model comparison (4 models)
 # ============================================================
 
-def run_aggregation():
+def run_models():
     envs = [env_2Clusters]
     models = [defineModel_ATP, defineModel_GRID, defineModel_ATP_GRID,
               defineModel_selectedSwitches]
@@ -434,10 +436,10 @@ def run_aggregation():
 
 
 # ============================================================
-# Block #1c — percentage experiment
+# Block #1c — switch percentage (2-cluster)
 # ============================================================
 
-def run_percentage():
+def run_pct_2cluster():
     envs = [env_2Clusters_Percentages]
     models = [defineModel_selectedSwitches]
 
@@ -552,10 +554,10 @@ def run_percentage():
 
 
 # ============================================================
-# Block #1d — percentage experiment (1-cluster env)
+# Block #1d — switch percentage (1-cluster)
 # ============================================================
 
-def run_percentage_1cluster():
+def run_pct_1cluster():
     envs = [env_1Cluster_Test]
     models = [defineModel_selectedSwitches]
 
@@ -673,7 +675,7 @@ def run_percentage_1cluster():
 # Block #2 — start time experiment
 # ============================================================
 
-def run_starttime():
+def run_start_time():
     envs = [env_2Clusters]
     models = [defineModel_ATP, defineModel_GRID, defineModel_ATP_GRID,
               defineModel_selectedSwitches]
@@ -797,7 +799,7 @@ def run_starttime():
 # Block #3 — time window experiment
 # ============================================================
 
-def run_timewindow():
+def run_time_window():
     envs = [env_1Cluster_Test]
     models = [defineModel_ATP, defineModel_GRID, defineModel_ATP_GRID,
               defineModel_selectedSwitches]
@@ -920,10 +922,10 @@ def run_timewindow():
 
 
 # ============================================================
-# Block #4 — distribution experiment
+# Block #4 — worker distribution experiment
 # ============================================================
 
-def run_distribution():
+def run_worker_dist():
     envs = [env_2Clusters, env_2Clusters_Zipf15, env_2Clusters_Zipf2]
     models = [defineModel_ATP, defineModel_GRID, defineModel_ATP_GRID,
               defineModel_selectedSwitches]
@@ -1051,17 +1053,170 @@ def run_distribution():
 
 
 # ============================================================
+# Block #5 — InArt vs FlexINA comparison
+# ============================================================
+
+def run_inart_comparison():
+    envs = [env_2Clusters]
+    models = [defineModel_InArt, defineModel_selectedSwitches]
+
+    maxAggregate = 3
+    ittrNum = 3
+    percentage = 0.6
+    errorRuntimesM = {}
+    errorPacketsM = {}
+    kindsofModelsPackets = {}
+    kindsofModelsRuntime = {}
+    solve_counter = 0
+
+    for modelSolve in models:
+        print(f"[{modelSolve.__name__}]")
+        block_start = time.time()
+        numPackets2 = []
+        RuntimeTotal2 = []
+        errorRuntime = []
+        errorPackets = []
+        for envTemp in envs:
+            errorRuntime.append([])
+            errorPackets.append([])
+            (pSwitchesTopology, pSwitchPorts, neighborsofEachSwitch,
+             pSwitchesNumber, numberSlotsSwitches, workersTopology,
+             pWorkerPorts, workersNumber, numAllFrags,
+             fragmentsofEachWorker, totalWorkers, stepsToSwitches,
+             cutPorts, selectedSwitches, clusters) = _unpack_env(envTemp)
+
+            dict_list = _prepare_dict_list(fragmentsofEachWorker, totalWorkers)
+            total_solves = len(models) * len(envs) * (maxAggregate - 2) * ittrNum * len(dict_list)
+            for maxAggregation in range(2, maxAggregate):
+                for ittr in range(ittrNum):
+                    T_max_1 = 0
+                    T_max_2 = 8
+                    addTime = int(1 * T_max_2)
+                    Y_Used = []
+                    Z_Used = []
+                    numPackets = 0
+                    RuntimeTotal = 0
+                    avgPacket = []
+                    avgRuntime = []
+                    for items in range(0, len(dict_list)):
+                        fragmentsofEachWorker = dict_list[items]
+                        solve_counter += 1
+                        timed_out = False
+                        signal.signal(signal.SIGALRM, _timeout_handler)
+                        signal.alarm(60)
+                        try:
+                            subSets, allofSubsets, usefulIntervalTime, fragments = \
+                                create_Fragments(fragmentsofEachWorker, T_max_1, T_max_2, maxAggregation)
+                            Y_Used = preProcessMappingY(Y_Used, allofSubsets[0])
+                            Z_Used = preProcessMappingZ(Z_Used, subSets, usefulIntervalTime)
+                            (model, Z_Variables, Y_Variables, Prm1, Prm2,
+                             clusterSets, switchinClusters, AllClusters) = \
+                                modelSolve(allofSubsets, pSwitchesTopology, pSwitchPorts,
+                                           T_max_1, T_max_2, workersTopology,
+                                           fragmentsofEachWorker, pWorkerPorts,
+                                           subSets, numberSlotsSwitches, usefulIntervalTime,
+                                           Y_Used, Z_Used, maxAggregation, stepsToSwitches,
+                                           cutPorts, selectedSwitches, percentage, clusters)
+                            if modelSolve == defineModel_InArt:
+                                apply_constraints_InArt(
+                                    modelSolve, pSwitchesTopology, numberSlotsSwitches,
+                                    usefulIntervalTime, subSets, model, T_max_1, T_max_2,
+                                    Z_Used, Y_Used, neighborsofEachSwitch, pSwitchPorts,
+                                    workersTopology, fragmentsofEachWorker, pWorkerPorts,
+                                    numAllFrags, clusterSets, switchinClusters, AllClusters,
+                                    Y_Variables, Z_Variables)
+                            else:
+                                apply_constraints(
+                                    modelSolve, pSwitchesTopology, numberSlotsSwitches,
+                                    usefulIntervalTime, subSets, model, T_max_1, T_max_2,
+                                    Z_Used, Y_Used, neighborsofEachSwitch, pSwitchPorts,
+                                    workersTopology, fragmentsofEachWorker, pWorkerPorts,
+                                    numAllFrags, clusterSets, switchinClusters, AllClusters,
+                                    Y_Variables, Z_Variables)
+                            objective(Y_Variables, model)
+                            print(f"  [{solve_counter}/{total_solves}] ", end="", flush=True)
+                            Y_Value_One, Z_Value_One, Y_Used, Z_Used, numPacket, Runtime, status = \
+                                solveProblem(model, Y_Used, Z_Used)
+                        except TimeoutError:
+                            signal.alarm(0)
+                            print(f"  [{solve_counter}/{total_solves}] TIMEOUT (skipped)", flush=True)
+                            timed_out = True
+                            numPacket = 0
+                            Runtime = 0
+                        finally:
+                            signal.alarm(0)
+
+                        if not timed_out:
+                            T_max_1 += addTime
+                            T_max_2 += addTime
+                        numPackets += numPacket
+                        RuntimeTotal += Runtime
+                    errorRuntime[-1].append(RuntimeTotal)
+                    errorPackets[-1].append(numPackets)
+                    avgPacket.append(numPackets)
+                    avgRuntime.append(RuntimeTotal)
+            numPackets2.append(sum(avgPacket) / len(avgPacket))
+            RuntimeTotal2.append(sum(avgRuntime) / len(avgRuntime))
+        errorRuntimesM[modelSolve] = errorRuntime
+        errorPacketsM[modelSolve] = errorPackets
+        kindsofModelsPackets[modelSolve] = numPackets2
+        kindsofModelsRuntime[modelSolve] = RuntimeTotal2
+
+    print(f"  done in {time.time() - block_start:.1f}s")
+    print("Packets:", kindsofModelsPackets)
+    print("Runtime:", kindsofModelsRuntime)
+
+    # --- Plots ---
+    labels = ['2 Clusters']
+    C_inart = kindsofModelsPackets[defineModel_InArt]
+    C_flex = kindsofModelsPackets[defineModel_selectedSwitches]
+
+    plot_grouped_bars(labels, [C_inart, C_flex],
+                      ['InArt', 'FlexINA'],
+                      '# fragments', 'topology',
+                      "plots/inart_vs_flexina_fragments.pdf",
+                      color_indices=[5, 1], hatch_list=['/', '.'],
+                      width=0.2, legend_bbox=(1, 1), legend_ncol=2, legend_size=16)
+
+    y_inart = kindsofModelsRuntime[defineModel_InArt]
+    y_flex = kindsofModelsRuntime[defineModel_selectedSwitches]
+    e_inart = [np.std(vals) for vals in errorRuntimesM[defineModel_InArt]]
+    e_flex = [np.std(vals) for vals in errorRuntimesM[defineModel_selectedSwitches]]
+    plot_errorbar(labels, [y_inart, y_flex], [e_inart, e_flex],
+                  ['InArt', 'FlexINA'], 'runtime(s)', 'topology',
+                  "plots/inart_vs_flexina_runtime_errorbar.pdf",
+                  fmt_list=['s--', 'p--'],
+                  legend_bbox=(0.3, 1), legend_size=16)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    plt.plot(labels, y_inart, ls='dashed', marker='s', markersize=10, label='InArt')
+    plt.plot(labels, y_flex, ls='dashed', marker='p', markersize=10, label='FlexINA')
+    plt.legend(loc='upper center', bbox_to_anchor=(0.3, 1), ncol=2, prop={'size': 16})
+    plt.xlabel('topology')
+    plt.ylabel('runtime(s)')
+    formatter = ticker.ScalarFormatter(useMathText=True)
+    formatter.set_powerlimits((-3, 3))
+    ax.yaxis.set_major_formatter(formatter)
+    fig.tight_layout()
+    plt.grid(linestyle='--', linewidth=0.5)
+    plt.rcParams.update({'font.size': 22})
+    plt.savefig("plots/inart_vs_flexina_runtime.pdf", bbox_inches="tight", format="pdf")
+    plt.show()
+
+
+# ============================================================
 # Main — prompt user and dispatch
 # ============================================================
 
 BLOCK_RUNNERS = {
-    "basic":              run_basic,
-    "aggregation":        run_aggregation,
-    "percentage":         run_percentage,
-    "percentage_1cluster":run_percentage_1cluster,
-    "starttime":          run_starttime,
-    "timewindow":         run_timewindow,
-    "distribution":       run_distribution,
+    "baseline":     run_baseline,
+    "models":       run_models,
+    "pct_2cluster": run_pct_2cluster,
+    "pct_1cluster": run_pct_1cluster,
+    "start_time":   run_start_time,
+    "time_window":  run_time_window,
+    "worker_dist":  run_worker_dist,
+    "inart":        run_inart_comparison,
 }
 
 if __name__ == "__main__":
