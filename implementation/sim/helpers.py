@@ -24,20 +24,26 @@ def remove_matching_pairs(pairs, numbers):
 
 
 def preProcessMappingY(Y_Used, allofSubsets):
-    tempArray = []
+    # Union into a set to (a) make membership tests below O(1) and
+    # (b) prevent the |Y_Used| x |fragments| blow-up of the old list version
+    # (each slot was previously multiplying |Y_Used| by |allofSubsets|).
+    if isinstance(Y_Used, list):
+        Y_Used = set(Y_Used)
+    new_entries = set()
     for used in Y_Used:
         firstKey = used[1]
         secondKey = used[2]
         thirdKey = used[3]
         for subset in allofSubsets:
-            tempTuple = (frozenset(subset), firstKey, secondKey, thirdKey)
-            tempArray.append(tempTuple)
-    Y_Used = Y_Used + tempArray
+            new_entries.add((frozenset(subset), firstKey, secondKey, thirdKey))
+    Y_Used |= new_entries
     return Y_Used
 
 
 def preProcessMappingZ(Z_Used, subSets, usefulIntervalTime):
-    tempArray = []
+    if isinstance(Z_Used, list):
+        Z_Used = set(Z_Used)
+    new_entries = set()
     for zused in Z_Used:
         firstKey = zused[1]
         secondKey = zused[2]
@@ -46,10 +52,10 @@ def preProcessMappingZ(Z_Used, subSets, usefulIntervalTime):
         removeTimes = remove_matching_pairs(usefulIntervalTime, [thirdKey, fourthKey])
         for sub in subSets:
             for i in sub:
-                set_of_sets = {frozenset(s) for s in i}
+                set_of_sets = frozenset(frozenset(s) for s in i)
                 for timeN in usefulIntervalTime:
                     if timeN in removeTimes:
-                        tempArray.append(
+                        new_entries.add(
                             (set_of_sets, firstKey, secondKey, timeN[0], timeN[1]))
-    Z_Used = Z_Used + tempArray
+    Z_Used |= new_entries
     return Z_Used

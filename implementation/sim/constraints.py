@@ -608,7 +608,8 @@ def constraintNum5(workersTopology, fragmentsofEachWorker, pWorkerPorts,
                     keyDictY = (frozenset(fragg), worker, port, time)
                     if keyDictY not in Y_Used:
                         tempArray.append(Y_Variables[keyDictY])
-            model.addCons(sum(tempArray) == 1)
+            if tempArray:
+                model.addCons(sum(tempArray) == 1)
 
 
 # ---------------------------------------------------------------------------
@@ -627,7 +628,8 @@ def constraintNum5ATP(workersTopology, fragmentsofEachWorker, pWorkerPorts,
                 if keyDictY not in Y_Used:
                     tempArray.append(Y_Variables[keyDictY])
                     time += 1
-            model.addCons(sum(tempArray) == 1)
+            if tempArray:
+                model.addCons(sum(tempArray) == 1)
 
 
 # ---------------------------------------------------------------------------

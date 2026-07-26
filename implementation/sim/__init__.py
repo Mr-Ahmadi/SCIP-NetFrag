@@ -24,11 +24,17 @@ from .helpers import (
 )
 
 from .environments import (
-    env_1Cluster_Test,
-    env_2Clusters,
-    env_2Clusters_Zipf15,
-    env_2Clusters_Zipf2,
-    env_2Clusters_Percentages,
+    env_1c_5sw_3f,
+    env_1c_5sw_2f,
+    env_1c_3sw_4f,
+    env_2c_10sw_3f,
+    env_2c_10sw_3f_sparse,
+    env_2c_10sw_6f,
+    env_2c_10sw_8f,
+    env_2c_10sw_uneven,
+    env_2c_10sw_skew15,
+    env_2c_10sw_skew1,
+    env_3c_14sw_4f,
 )
 
 from .models import (
@@ -68,8 +74,17 @@ from .solver import objective, solveProblem
 
 from .runner import apply_constraints, apply_constraints_basic, apply_constraints_InArt
 
-from .plots import (
+from .plot import (
+    style,
+    apply as apply_plot_style,
+    new_fig,
+    fmt_axis,
+    grid as plot_grid,
+    save_fig,
+    legend as plot_legend,
     plot_grouped_bars,
     plot_errorbar,
     plot_single_bars,
 )
+
+from .block_io import BlockRun, block_json_default

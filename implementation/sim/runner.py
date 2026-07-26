@@ -52,6 +52,19 @@ def apply_constraints(modelSolve, pSwitchesTopology, numberSlotsSwitches,
 
     is_atp = modelSolve in _ATP_MODELS
 
+    # Constraints 1 & 2 (per-switch slot & time capacity over the selected-
+    # switch Z variables) are required for the FlexINA cluster path — without
+    # them the cluster aggregated-fragments are unbounded and the model can
+    # over-aggregate (returning a packet count below the true optimum).
+    # Mirrors the archive reference's defineModel_selectedSwitches block.
+    constraintNum1selectedSwitches(
+        pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
+        subSets, model, Z_Used, clusterSets, switchinClusters, AllClusters)
+    constraintNum2selectedSwitches(
+        pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
+        subSets, model, T_max_1, T_max_2, Z_Used, clusterSets,
+        switchinClusters, AllClusters)
+
     if is_atp:
         constraintNum3selectedSwitches(
             pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
