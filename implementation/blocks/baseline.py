@@ -1,4 +1,3 @@
-"""Block downloaded from the old main.py — see blocks/__init__.py for the registry."""
 from blocks._imports import (
     BAR_WIDTH, BASELINE_COLORS, BASELINE_HATCHES, BASELINE_LABELS, BASELINE_MARKERS, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_2, LEGEND_SIZE, XLEN_AGG, YLEN_FRAG, YLEN_RUNTIME, _prepare_dict_list, _unpack_env, apply_constraints, apply_constraints_basic, apply_plot_style, create_Fragments, defineModel, defineModel_selectedSwitches, env_1c_5sw_3f, fmt_axis, new_fig, np, objective, plot_errorbar, plot_grid, plot_grouped_bars, plot_legend, preProcessMappingY, preProcessMappingZ, save_fig, solveProblem, style, time,
 )
@@ -29,13 +28,9 @@ def run_baseline():
 
     kindsofModelsPackets = {m: [] for m in models}
     kindsofModelsRuntime = {m: [] for m in models}
-    errorRuntimesM = {m: [] for m in models}    # per model: list per agg of [rt per ittr]
+    errorRuntimesM = {m: [] for m in models}
     errorPacketsM = {m: [] for m in models}
 
-    # Total sub-solves across all envs — computed once before the loops so
-    # the [N/total] counter doesn't shift when envs have different dict_list
-    # sizes (otherwise the denominator jumps mid-run and the counter can
-    # appear to stall or even run past 100%).
     _solve_per_env = {
         e: len(_prepare_dict_list(_unpack_env(e)[9], _unpack_env(e)[10]))
         for e in envs
@@ -149,12 +144,10 @@ def run_baseline():
     print("Packets:", kindsofModelsPackets)
     print("Runtime:", kindsofModelsRuntime)
 
-    # All sub-solves across all models/envs are finished.
     print(f"\n>>> All {total_solves} sub-solves complete "
           f"(solve_counter={solve_counter}). Block finished in "
           f"{time.time() - block_start:.1f}s — proceeding to plots.")
 
-    # --- Plots (consistent style: centralized labels + legend bbox) ---
     C_1 = kindsofModelsPackets[defineModel]
     C_5 = kindsofModelsPackets[defineModel_selectedSwitches]
 
@@ -183,8 +176,6 @@ def run_baseline():
                   fmt_list=BASELINE_MARKERS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    # Line chart variant (kept alongside the errorbar plot for readers
-    # who prefer the plain line form). Same style as the errorbar figure.
     apply_plot_style()
     fig, ax = new_fig()
     ax.plot(x_labels, y1, ls='dashed', marker='o',
@@ -206,7 +197,6 @@ def run_baseline():
                       width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
                       legend_ncol=LEGEND_NCOL_2, legend_size=LEGEND_SIZE)
 
-    # --- Save clean JSON ---
     summary = run.summary(
         x_labels, series_order=BASELINE_LABELS,
         y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME, x_label=XLEN_AGG)
@@ -218,8 +208,3 @@ def run_baseline():
         "plots/basic_runtime_vs_aggregation_errorbar.pdf",
         "plots/basic_runtime_vs_aggregation_bars.pdf",
     ]})
-
-
-# ============================================================
-# Block #1b — model comparison (4 models)
-# ============================================================

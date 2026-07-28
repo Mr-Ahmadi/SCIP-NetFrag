@@ -1,4 +1,3 @@
-"""Block downloaded from the old main.py — see blocks/__init__.py for the registry."""
 from blocks._imports import (
     BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4, LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS, XLEN_AGG, XLEN_FRAGS, XLEN_SLOTS, XLEN_TOPOLOGY, YLEN_FRAG, YLEN_RUNTIME, YLEN_RUNTIME_LOG, _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments, defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID, defineModel_selectedSwitches, env_2c_10sw_3f_sparse, np, objective, plot_errorbar, plot_grouped_bars, plot_single_bars, preProcessMappingY, preProcessMappingZ, solveProblem, time,
 )
@@ -24,14 +23,9 @@ def run_models_sparse():
         "percentage": percentage,
         "T_max_2_init": 8,
         "addTime_factor": 1.0,
-        # Sparse-slot mask: which switches carry an aggregation slot.
-        # Mirrors archive/Untitled.py's env_2Clusters; the regular
-        # models block (env_2c_10sw_3f) gives every switch a slot.
-        "numberSlotsSwitches": {0: [0], 1: [0], 2: [], 3: [0], 4: [],
+            "numberSlotsSwitches": {0: [0], 1: [0], 2: [], 3: [0], 4: [],
                                 5: [0], 6: [], 7: [], 8: [0], 9: []},
-        # Same hardcoded scalability rows as run_models — kept identical
-        # so the two blocks' scalability charts line up side-by-side.
-        "scalability_tree": {
+            "scalability_tree": {
             "labels": ["8", "16", "24"],
             "runtime_s": [0.23863816261291504, 0.48981642723083496,
                            0.5911757946014404]},
@@ -48,9 +42,6 @@ def run_models_sparse():
     kindsofModelsPackets = {}
     kindsofModelsRuntime = {}
 
-    # Total sub-solves across all envs — computed once before the loops so
-    # the [N/total] counter doesn't shift when envs have different
-    # dict_list sizes.
     _solve_per_env = {
         e: len(_prepare_dict_list(_unpack_env(e)[9], _unpack_env(e)[10]))
         for e in envs
@@ -149,13 +140,10 @@ def run_models_sparse():
     print("Packets:", kindsofModelsPackets)
     print("Runtime:", kindsofModelsRuntime)
 
-    # All sub-solves across all models/envs are finished.
     print(f"\n>>> All {total_solves} sub-solves complete "
           f"(solve_counter={solve_counter}). Block finished in "
           f"{time.time() - block_start:.1f}s — proceeding to plots.")
 
-    # --- Plots (consistent style; models_sparse_* filenames) ---
-    # Aggregation axis — primary comparison.
     C_2 = kindsofModelsPackets[defineModel_ATP]
     C_3 = kindsofModelsPackets[defineModel_GRID]
     C_4 = kindsofModelsPackets[defineModel_ATP_GRID]
@@ -182,7 +170,7 @@ def run_models_sparse():
                   fmt_list=MODEL_MARKERS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    # Slot-axis (same data, retitled). Use XLEN_SLOTS.
+    # Slot-axis (same data, retitled).
     plot_grouped_bars(x_labels, [C_2, C_3, C_4, C_5], MODEL_LABELS,
                       YLEN_FRAG, XLEN_SLOTS,
                       "plots/models_sparse_fragments_vs_slots.pdf",
@@ -195,29 +183,8 @@ def run_models_sparse():
                   fmt_list=MODEL_MARKERS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    # Topology-axis (same data, relabeled x ticks).
-    topo_labels = ['tree', '1 Cluster', '2 Clusters']
-    plot_grouped_bars(topo_labels, [C_2, C_3, C_4, C_5], MODEL_LABELS,
-                      YLEN_FRAG, XLEN_TOPOLOGY,
-                      "plots/models_sparse_fragments_vs_topology.pdf",
-                      color_indices=MODEL_COLORS, hatch_list=MODEL_HATCHES,
-                      width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
-                      legend_ncol=LEGEND_NCOL_4, legend_size=LEGEND_SIZE)
-    plot_errorbar(topo_labels, [y2, y3, y4, y5], [e2, e3, e4, e5],
-                  MODEL_LABELS, YLEN_RUNTIME, XLEN_TOPOLOGY,
-                  "plots/models_sparse_runtime_vs_topology_errorbar.pdf",
-                  fmt_list=MODEL_MARKERS,
-                  legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
-    plot_grouped_bars(topo_labels, [y2, y3, y4, y5], MODEL_LABELS,
-                      YLEN_RUNTIME_LOG, XLEN_TOPOLOGY,
-                      "plots/models_sparse_runtime_vs_topology_logscale.pdf",
-                      color_indices=MODEL_COLORS, hatch_list=MODEL_HATCHES,
-                      width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
-                      legend_ncol=LEGEND_NCOL_4, legend_size=LEGEND_SIZE,
-                      log_scale=True)
 
-    # Scalability (synthetic rows from config). Same style as other
-    # single-series bar charts.
+    # Scalability (synthetic rows from config).
     tree_cfg = run.config["scalability_tree"]
     plot_single_bars(tree_cfg["labels"], tree_cfg["runtime_s"],
                     YLEN_RUNTIME, XLEN_FRAGS,
@@ -229,7 +196,6 @@ def run_models_sparse():
                     "plots/models_sparse_scalability_fragments.pdf",
                     color_index=9, hatch='.')
 
-    # --- Save clean JSON ---
     summary = run.summary(
         x_labels, series_order=MODEL_LABELS,
         y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME, x_label=XLEN_AGG)
@@ -239,9 +205,6 @@ def run_models_sparse():
         "plots/models_sparse_runtime_errorbar.pdf",
         "plots/models_sparse_fragments_vs_slots.pdf",
         "plots/models_sparse_runtime_vs_slots_errorbar.pdf",
-        "plots/models_sparse_fragments_vs_topology.pdf",
-        "plots/models_sparse_runtime_vs_topology_errorbar.pdf",
-        "plots/models_sparse_runtime_vs_topology_logscale.pdf",
         "plots/models_sparse_scalability_tree.pdf",
         "plots/models_sparse_scalability_fragments.pdf",
     ]})

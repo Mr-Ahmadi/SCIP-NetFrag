@@ -1,9 +1,8 @@
 """
-Constraint functions — all constraintNum* functions.
-Moved verbatim from the original Accelerating_New.py.
+Constraint functions.
 
-IMPORTANT: These functions read Y_Variables, Z_Variables, and workersTopology
-as module-level globals.  The caller (runner.py) must set these before calling.
+These functions read Y_Variables, Z_Variables, and workersTopology
+as module-level globals. The caller (runner.py) must set these before calling.
 """
 from .helpers import find_keys_by_value
 
@@ -13,9 +12,7 @@ Z_Variables = {}
 workersTopology = {}
 
 
-# ---------------------------------------------------------------------------
 # Constraint 1 — basic
-# ---------------------------------------------------------------------------
 
 def constraintNum1(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                    subSets, model, Z_Used):
@@ -29,15 +26,13 @@ def constraintNum1(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                             set_of_sets = {frozenset(s) for s in subSub}
                             keyDictZ = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                            if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                 temporarySumArray.append(Z_Variables[keyDictZ])
                 if len(temporarySumArray) != 0:
                     model.addCons(sum(temporarySumArray) <= 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 1 — selectedSwitches
-# ---------------------------------------------------------------------------
 
 def constraintNum1selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                    usefulIntervalTime, subSets, model, Z_Used,
@@ -52,7 +47,7 @@ def constraintNum1selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                             set_of_sets = {frozenset(s) for s in sub}
                             keyDictZ = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                            if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                 temporarySumArray.append(Z_Variables[keyDictZ])
                     if len(temporarySumArray) != 0:
                         model.addCons(sum(temporarySumArray) <= 1)
@@ -67,15 +62,13 @@ def constraintNum1selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                 set_of_sets = {frozenset(s) for s in subSub}
                                 keyDictZ = (frozenset(set_of_sets), slots, switches,
                                             timesNumber[0], timesNumber[1])
-                                if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                                if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                     temporarySumArray.append(Z_Variables[keyDictZ])
                     if len(temporarySumArray) != 0:
                         model.addCons(sum(temporarySumArray) <= 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint MultiSlots
-# ---------------------------------------------------------------------------
 
 def constraintMultiSlots(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                          subSets, model, Z_Used, clusterSets, switchinClusters, AllClusters):
@@ -89,7 +82,7 @@ def constraintMultiSlots(pSwitchesTopology, numberSlotsSwitches, usefulIntervalT
                             set_of_sets = {frozenset(s) for s in sub}
                             keyDictZ = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                            if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                 temporarySumArray.append(Z_Variables[keyDictZ])
                 if len(temporarySumArray) != 0:
                     model.addCons(sum(temporarySumArray) <= 1)
@@ -104,15 +97,13 @@ def constraintMultiSlots(pSwitchesTopology, numberSlotsSwitches, usefulIntervalT
                                 set_of_sets = {frozenset(s) for s in subSub}
                                 keyDictZ = (frozenset(set_of_sets), slots, switches,
                                             timesNumber[0], timesNumber[1])
-                                if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                                if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                     temporarySumArray.append(Z_Variables[keyDictZ])
                     if len(temporarySumArray) != 0:
                         model.addCons(sum(temporarySumArray) <= 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 2 — basic
-# ---------------------------------------------------------------------------
 
 def constraintNum2(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                    subSets, model, T_max_1, T_max_2, Z_Used):
@@ -128,15 +119,13 @@ def constraintNum2(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                                     set_of_sets = {frozenset(s) for s in subSub}
                                     keyDictZ = (frozenset(set_of_sets), slots, switches,
                                                 timesNumber[0], timesNumber[1])
-                                    if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                                    if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                         temporarySumArray.append(Z_Variables[keyDictZ])
                 if len(temporarySumArray) != 0:
                     model.addCons(sum(temporarySumArray) <= 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 2 — selectedSwitches
-# ---------------------------------------------------------------------------
 
 def constraintNum2selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                    usefulIntervalTime, subSets, model, T_max_1, T_max_2,
@@ -153,7 +142,7 @@ def constraintNum2selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                     set_of_sets = {frozenset(s) for s in sub}
                                     keyDictZ = (frozenset(set_of_sets), slots, switches,
                                                 timesNumber[0], timesNumber[1])
-                                    if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                                    if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                         temporarySumArray.append(Z_Variables[keyDictZ])
                     if len(temporarySumArray) != 0:
                         model.addCons(sum(temporarySumArray) <= 1)
@@ -170,15 +159,13 @@ def constraintNum2selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                         set_of_sets = {frozenset(s) for s in subSub}
                                         keyDictZ = (frozenset(set_of_sets), slots, switches,
                                                     timesNumber[0], timesNumber[1])
-                                        if keyDictZ not in Z_Used and keyDictZ in Z_Variables.keys():
+                                        if keyDictZ not in Z_Used and keyDictZ in Z_Variables:
                                             temporarySumArray.append(Z_Variables[keyDictZ])
                     if len(temporarySumArray) != 0:
                         model.addCons(sum(temporarySumArray) <= 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 3 — basic
-# ---------------------------------------------------------------------------
 
 def constraintNum3(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                    subSets, model, T_max_1, T_max_2, neighborsofEachSwitch,
@@ -192,38 +179,34 @@ def constraintNum3(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                             set_of_sets = {frozenset(s) for s in subSub}
                             Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                 Z_Var = Z_Variables[Z_Var_Id]
-                            for subSubSub in subSub:
-                                keyDictNeighborsY = []
-                                for t in range(max(timesNumber[0] - 1, 0), timesNumber[1]):
-                                    for neighbor in neighborsofEachSwitch[switches]:
+                                for subSubSub in subSub:
+                                    keyDictNeighborsY = []
+                                    for t in range(max(timesNumber[0] - 1, 0), timesNumber[1]):
+                                        for neighbor in neighborsofEachSwitch[switches]:
+                                            if neighbor in pSwitchPorts:
+                                                portNeighborSwitch = pSwitchPorts[neighbor]
+                                                for portt in portNeighborSwitch:
+                                                  if portNeighborSwitch[portt] == switches:
+                                                      keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                      try:
+                                                          keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                      except Exception:
+                                                          pass
+                                    if len(keyDictNeighborsY) > 0:
                                         try:
-                                            portNeighborSwitch = pSwitchPorts[neighbor]
+                                            model.addCons(Z_Var <= sum(keyDictNeighborsY))
                                         except Exception:
                                             pass
-                                        for portt in portNeighborSwitch:
-                                            if portNeighborSwitch[portt] == switches:
-                                                keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                try:
-                                                    keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                except Exception:
-                                                    pass
-                                if len(keyDictNeighborsY) > 0:
-                                    try:
-                                        model.addCons(Z_Var <= sum(keyDictNeighborsY))
-                                    except Exception:
-                                        pass
-                                else:
-                                    try:
-                                        model.addCons(Z_Var <= 0)
-                                    except Exception:
-                                        pass
+                                    else:
+                                        try:
+                                            model.addCons(Z_Var <= 0)
+                                        except Exception:
+                                            pass
 
 
-# ---------------------------------------------------------------------------
 # Constraint 3 — selectedSwitches
-# ---------------------------------------------------------------------------
 
 def constraintNum3selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                    usefulIntervalTime, subSets, model, T_max_1, T_max_2,
@@ -238,61 +221,21 @@ def constraintNum3selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                             set_of_sets = {frozenset(s) for s in sub}
                             Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                 Z_Var = Z_Variables[Z_Var_Id]
-                            for subSubSub in sub:
-                                keyDictNeighborsY = []
-                                for t in range(max(timesNumber[0] - 1, 0), timesNumber[1]):
-                                    for neighbor in neighborsofEachSwitch[switches]:
-                                        try:
-                                            portNeighborSwitch = pSwitchPorts[neighbor]
-                                        except Exception:
-                                            pass
-                                        for portt in portNeighborSwitch:
-                                            if portNeighborSwitch[portt] == switches:
-                                                keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                try:
-                                                    keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                except Exception:
-                                                    pass
-                                if len(keyDictNeighborsY) > 0:
-                                    try:
-                                        model.addCons(Z_Var <= sum(keyDictNeighborsY))
-                                    except Exception:
-                                        pass
-                                else:
-                                    try:
-                                        model.addCons(Z_Var <= 0)
-                                    except Exception:
-                                        pass
-
-    for switches in pSwitchesTopology:
-        if switches not in AllClusters:
-            for slots in numberSlotsSwitches[switches]:
-                for timesNumber in usefulIntervalTime:
-                    for sub in subSets:
-                        for subSub in sub:
-                            if len(subSub) > 1:
-                                set_of_sets = {frozenset(s) for s in subSub}
-                                Z_Var_Id = (frozenset(set_of_sets), slots, switches,
-                                            timesNumber[0], timesNumber[1])
-                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
-                                    Z_Var = Z_Variables[Z_Var_Id]
-                                for subSubSub in subSub:
+                                for subSubSub in sub:
                                     keyDictNeighborsY = []
                                     for t in range(max(timesNumber[0] - 1, 0), timesNumber[1]):
                                         for neighbor in neighborsofEachSwitch[switches]:
-                                            try:
+                                            if neighbor in pSwitchPorts:
                                                 portNeighborSwitch = pSwitchPorts[neighbor]
-                                            except Exception:
-                                                pass
-                                            for portt in portNeighborSwitch:
-                                                if portNeighborSwitch[portt] == switches:
-                                                    keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                    try:
-                                                        keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                    except Exception:
-                                                        pass
+                                                for portt in portNeighborSwitch:
+                                                  if portNeighborSwitch[portt] == switches:
+                                                      keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                      try:
+                                                          keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                      except Exception:
+                                                          pass
                                     if len(keyDictNeighborsY) > 0:
                                         try:
                                             model.addCons(Z_Var <= sum(keyDictNeighborsY))
@@ -304,10 +247,46 @@ def constraintNum3selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                         except Exception:
                                             pass
 
+    for switches in pSwitchesTopology:
+        if switches not in AllClusters:
+            for slots in numberSlotsSwitches[switches]:
+                for timesNumber in usefulIntervalTime:
+                    for sub in subSets:
+                        for subSub in sub:
+                            if len(subSub) > 1:
+                                set_of_sets = {frozenset(s) for s in subSub}
+                                Z_Var_Id = (frozenset(set_of_sets), slots, switches,
+                                            timesNumber[0], timesNumber[1])
+                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
+                                    Z_Var = Z_Variables[Z_Var_Id]
+                                    for subSubSub in subSub:
+                                        keyDictNeighborsY = []
+                                        for t in range(max(timesNumber[0] - 1, 0), timesNumber[1]):
+                                            for neighbor in neighborsofEachSwitch[switches]:
+                                                try:
+                                                    portNeighborSwitch = pSwitchPorts[neighbor]
+                                                except Exception:
+                                                    pass
+                                                for portt in portNeighborSwitch:
+                                                    if portNeighborSwitch[portt] == switches:
+                                                        keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                        try:
+                                                            keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                        except Exception:
+                                                            pass
+                                        if len(keyDictNeighborsY) > 0:
+                                            try:
+                                                model.addCons(Z_Var <= sum(keyDictNeighborsY))
+                                            except Exception:
+                                                pass
+                                        else:
+                                            try:
+                                                model.addCons(Z_Var <= 0)
+                                            except Exception:
+                                                pass
 
-# ---------------------------------------------------------------------------
+
 # Constraint 3 — selectedSwitches ATP
-# ---------------------------------------------------------------------------
 
 def constraintNum3selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                                       usefulIntervalTime, subSets, model, T_max_1, T_max_2,
@@ -322,76 +301,28 @@ def constraintNum3selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                             set_of_sets = {frozenset(s) for s in sub}
                             Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                 Z_Var = Z_Variables[Z_Var_Id]
-                            for subSubSub in sub:
-                                keyDictNeighborsY = []
-                                for t in range(T_max_1, timesNumber[1]):
-                                    for neighbor in neighborsofEachSwitch[switches]:
-                                        try:
-                                            portNeighborSwitch = pSwitchPorts[neighbor]
-                                        except Exception:
-                                            pass
-                                        for portt in portNeighborSwitch:
-                                            if portNeighborSwitch[portt] == switches:
-                                                keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                if neighbor in workersTopology:
-                                                    if t == T_max_1:
-                                                        try:
-                                                            keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                        except Exception:
-                                                            pass
-                                                else:
-                                                    try:
-                                                        keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                    except Exception:
-                                                        pass
-                                if len(keyDictNeighborsY) > 0:
-                                    try:
-                                        model.addCons(Z_Var <= sum(keyDictNeighborsY))
-                                    except Exception:
-                                        pass
-                                else:
-                                    try:
-                                        model.addCons(Z_Var <= 0)
-                                    except Exception:
-                                        pass
-
-    for switches in pSwitchesTopology:
-        if switches not in AllClusters:
-            for slots in numberSlotsSwitches[switches]:
-                for timesNumber in usefulIntervalTime:
-                    for sub in subSets:
-                        for subSub in sub:
-                            if len(subSub) > 1:
-                                set_of_sets = {frozenset(s) for s in subSub}
-                                Z_Var_Id = (frozenset(set_of_sets), slots, switches,
-                                            timesNumber[0], timesNumber[1])
-                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
-                                    Z_Var = Z_Variables[Z_Var_Id]
-                                for subSubSub in subSub:
+                                for subSubSub in sub:
                                     keyDictNeighborsY = []
                                     for t in range(T_max_1, timesNumber[1]):
                                         for neighbor in neighborsofEachSwitch[switches]:
-                                            try:
+                                            if neighbor in pSwitchPorts:
                                                 portNeighborSwitch = pSwitchPorts[neighbor]
-                                            except Exception:
-                                                pass
-                                            for portt in portNeighborSwitch:
-                                                if portNeighborSwitch[portt] == switches:
-                                                    if neighbor in workersTopology:
-                                                        if t == T_max_1:
-                                                            keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                            try:
-                                                                keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                            except Exception:
-                                                                pass
-                                                    else:
-                                                        keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                        try:
-                                                            keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                        except Exception:
-                                                                pass
+                                                for portt in portNeighborSwitch:
+                                                  if portNeighborSwitch[portt] == switches:
+                                                      keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                      if neighbor in workersTopology:
+                                                          if t == T_max_1:
+                                                              try:
+                                                                  keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                              except Exception:
+                                                                  pass
+                                                      else:
+                                                          try:
+                                                              keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                          except Exception:
+                                                              pass
                                     if len(keyDictNeighborsY) > 0:
                                         try:
                                             model.addCons(Z_Var <= sum(keyDictNeighborsY))
@@ -403,10 +334,54 @@ def constraintNum3selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                                         except Exception:
                                             pass
 
+    for switches in pSwitchesTopology:
+        if switches not in AllClusters:
+            for slots in numberSlotsSwitches[switches]:
+                for timesNumber in usefulIntervalTime:
+                    for sub in subSets:
+                        for subSub in sub:
+                            if len(subSub) > 1:
+                                set_of_sets = {frozenset(s) for s in subSub}
+                                Z_Var_Id = (frozenset(set_of_sets), slots, switches,
+                                            timesNumber[0], timesNumber[1])
+                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
+                                    Z_Var = Z_Variables[Z_Var_Id]
+                                    for subSubSub in subSub:
+                                        keyDictNeighborsY = []
+                                        for t in range(T_max_1, timesNumber[1]):
+                                            for neighbor in neighborsofEachSwitch[switches]:
+                                                try:
+                                                    portNeighborSwitch = pSwitchPorts[neighbor]
+                                                except Exception:
+                                                    pass
+                                                for portt in portNeighborSwitch:
+                                                    if portNeighborSwitch[portt] == switches:
+                                                        if neighbor in workersTopology:
+                                                            if t == T_max_1:
+                                                                keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                                try:
+                                                                    keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                                except Exception:
+                                                                    pass
+                                                        else:
+                                                            keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                            try:
+                                                                keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                            except Exception:
+                                                                    pass
+                                        if len(keyDictNeighborsY) > 0:
+                                            try:
+                                                model.addCons(Z_Var <= sum(keyDictNeighborsY))
+                                            except Exception:
+                                                pass
+                                        else:
+                                            try:
+                                                model.addCons(Z_Var <= 0)
+                                            except Exception:
+                                                pass
 
-# ---------------------------------------------------------------------------
+
 # Constraint 4 — basic
-# ---------------------------------------------------------------------------
 
 def constraintNum4(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                    subSets, model, T_max_1, T_max_2, neighborsofEachSwitch,
@@ -421,29 +396,25 @@ def constraintNum4(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                             set_of_sets = {frozenset(s) for s in subSub}
                             Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                 Z_Var = Z_Variables[Z_Var_Id]
                                 for t in range(max(0, timesNumber[0] - 1), timesNumber[1]):
                                     keyDictNeighborsY = []
                                     for neighbor in neighborsofEachSwitch[switches]:
-                                        try:
+                                        if neighbor in pSwitchPorts:
                                             portNeighborSwitch = pSwitchPorts[neighbor]
-                                        except Exception:
-                                            pass
-                                        for portt in portNeighborSwitch:
-                                            if portNeighborSwitch[portt] == switches:
-                                                for subSubSub in subSub:
-                                                    keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                    try:
-                                                        keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                    except Exception:
-                                                        pass
+                                            for portt in portNeighborSwitch:
+                                              if portNeighborSwitch[portt] == switches:
+                                                  for subSubSub in subSub:
+                                                      keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                      try:
+                                                          keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                      except Exception:
+                                                          pass
                                     model.addCons(sum(keyDictNeighborsY) <= Z_Var + (1 - Z_Var) * M)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 4 — selectedSwitches
-# ---------------------------------------------------------------------------
 
 def constraintNum4selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                    usefulIntervalTime, subSets, model, T_max_1, T_max_2,
@@ -459,23 +430,21 @@ def constraintNum4selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                             set_of_sets = {frozenset(s) for s in sub}
                             Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                 Z_Var = Z_Variables[Z_Var_Id]
                                 for t in range(max(0, timesNumber[0] - 1), timesNumber[1]):
                                     keyDictNeighborsY = []
                                     for neighbor in neighborsofEachSwitch[switches]:
-                                        try:
+                                        if neighbor in pSwitchPorts:
                                             portNeighborSwitch = pSwitchPorts[neighbor]
-                                        except Exception:
-                                            pass
-                                        for portt in portNeighborSwitch:
-                                            if portNeighborSwitch[portt] == switches:
-                                                for subSubSub in sub:
-                                                    keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                    try:
-                                                        keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                    except Exception:
-                                                        pass
+                                            for portt in portNeighborSwitch:
+                                              if portNeighborSwitch[portt] == switches:
+                                                  for subSubSub in sub:
+                                                      keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                      try:
+                                                          keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                      except Exception:
+                                                          pass
                                     model.addCons(sum(keyDictNeighborsY) <= Z_Var + (1 - Z_Var) * M)
     M = 100
     for switches in pSwitchesTopology:
@@ -488,7 +457,7 @@ def constraintNum4selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                 set_of_sets = {frozenset(s) for s in subSub}
                                 Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                             timesNumber[0], timesNumber[1])
-                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                     Z_Var = Z_Variables[Z_Var_Id]
                                     for t in range(max(0, timesNumber[0] - 1), timesNumber[1]):
                                         keyDictNeighborsY = []
@@ -508,9 +477,7 @@ def constraintNum4selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                         model.addCons(sum(keyDictNeighborsY) <= Z_Var + (1 - Z_Var) * M)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 4 — selectedSwitches ATP
-# ---------------------------------------------------------------------------
 
 def constraintNum4selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                                       usefulIntervalTime, subSets, model, T_max_1, T_max_2,
@@ -526,32 +493,30 @@ def constraintNum4selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                             set_of_sets = {frozenset(s) for s in sub}
                             Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                         timesNumber[0], timesNumber[1])
-                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                            if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                 Z_Var = Z_Variables[Z_Var_Id]
                                 for t in range(T_max_1, timesNumber[1]):
                                     keyDictNeighborsY = []
                                     for neighbor in neighborsofEachSwitch[switches]:
-                                        try:
+                                        if neighbor in pSwitchPorts:
                                             portNeighborSwitch = pSwitchPorts[neighbor]
-                                        except Exception:
-                                            pass
-                                        for portt in portNeighborSwitch:
-                                            if portNeighborSwitch[portt] == switches:
-                                                if neighbor in workersTopology:
-                                                    if t == T_max_1:
-                                                        for subSubSub in sub:
-                                                            keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                            try:
-                                                                keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                            except Exception:
-                                                                pass
-                                                else:
-                                                    for subSubSub in sub:
-                                                        keyDictY = (frozenset(subSubSub), neighbor, portt, t)
-                                                        try:
-                                                            keyDictNeighborsY.append(Y_Variables[keyDictY])
-                                                        except Exception:
-                                                            pass
+                                            for portt in portNeighborSwitch:
+                                              if portNeighborSwitch[portt] == switches:
+                                                  if neighbor in workersTopology:
+                                                      if t == T_max_1:
+                                                          for subSubSub in sub:
+                                                              keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                              try:
+                                                                  keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                              except Exception:
+                                                                  pass
+                                                  else:
+                                                      for subSubSub in sub:
+                                                          keyDictY = (frozenset(subSubSub), neighbor, portt, t)
+                                                          try:
+                                                              keyDictNeighborsY.append(Y_Variables[keyDictY])
+                                                          except Exception:
+                                                              pass
                                     model.addCons(sum(keyDictNeighborsY) <= Z_Var + (1 - Z_Var) * M)
     M = 100
     for switches in pSwitchesTopology:
@@ -564,7 +529,7 @@ def constraintNum4selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                                 set_of_sets = {frozenset(s) for s in subSub}
                                 Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                             timesNumber[0], timesNumber[1])
-                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                     Z_Var = Z_Variables[Z_Var_Id]
                                     for t in range(T_max_1, timesNumber[1]):
                                         keyDictNeighborsY = []
@@ -593,9 +558,7 @@ def constraintNum4selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                                         model.addCons(sum(keyDictNeighborsY) <= Z_Var + (1 - Z_Var) * M)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 5
-# ---------------------------------------------------------------------------
 
 def constraintNum5(workersTopology, fragmentsofEachWorker, pWorkerPorts,
                    model, T_max_1, T_max_2, Y_Used):
@@ -612,9 +575,7 @@ def constraintNum5(workersTopology, fragmentsofEachWorker, pWorkerPorts,
                 model.addCons(sum(tempArray) == 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 5 ATP
-# ---------------------------------------------------------------------------
 
 def constraintNum5ATP(workersTopology, fragmentsofEachWorker, pWorkerPorts,
                       model, T_max_1, T_max_2, Y_Used):
@@ -632,43 +593,40 @@ def constraintNum5ATP(workersTopology, fragmentsofEachWorker, pWorkerPorts,
                 model.addCons(sum(tempArray) == 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 6
-# ---------------------------------------------------------------------------
 
 def constraintNum6(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                    subSets, model, T_max_1, T_max_2, neighborsofEachSwitch,
                    pSwitchPorts, Z_Used, Y_Used):
+    from collections import defaultdict
+
+    union_to_partitions = defaultdict(list)
     all_subsets = set()
     for sub in subSets:
         for subSub in sub:
             set_of_sets = {frozenset(s) for s in subSub}
             union_set = frozenset().union(*set_of_sets)
             all_subsets.add(union_set)
+            union_to_partitions[union_set].append(set_of_sets)
 
     for switches in pSwitchesTopology:
+        switch_slots = numberSlotsSwitches[switches]
         for ports in pSwitchPorts[switches]:
             for union_set in all_subsets:
                 for time in range(T_max_1, T_max_2):
                     keyDictY = (frozenset(union_set), switches, ports, time)
-                    if keyDictY not in Y_Used:
-                        try:
-                            Specific_Y = Y_Variables[keyDictY]
-                        except Exception:
-                            pass
+                    if keyDictY in Y_Used or keyDictY not in Y_Variables:
+                        continue
+                    Specific_Y = Y_Variables[keyDictY]
                     tempArray5 = []
-                    for sub2 in subSets:
-                        for subSub2 in sub2:
-                            set_of_sets2 = {frozenset(s) for s in subSub2}
-                            union_set2 = frozenset().union(*set_of_sets2)
-                            if union_set2 == union_set:
-                                for t in range(0, time):
-                                    for slots in numberSlotsSwitches[switches]:
-                                        keyDictZ = (frozenset(set_of_sets2), slots, switches, t, time)
-                                        try:
-                                            tempArray5.append(Z_Variables[keyDictZ])
-                                        except Exception:
-                                            pass
+                    for set_of_sets2 in union_to_partitions[union_set]:
+                        for t in range(0, time):
+                            for slots in switch_slots:
+                                keyDictZ = (frozenset(set_of_sets2), slots, switches, t, time)
+                                try:
+                                    tempArray5.append(Z_Variables[keyDictZ])
+                                except Exception:
+                                    pass
                     keyDictNeighborsY = []
                     if time != 0:
                         for neighbor in neighborsofEachSwitch[switches]:
@@ -687,9 +645,7 @@ def constraintNum6(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                         pass
 
 
-# ---------------------------------------------------------------------------
 # Constraint 7 — basic
-# ---------------------------------------------------------------------------
 
 def constraintNum7(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                    subSets, model, T_max_1, T_max_2, pSwitchPorts, Z_Used, Y_Used):
@@ -703,22 +659,20 @@ def constraintNum7(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                             for slots in numberSlotsSwitches[switches]:
                                 Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                             timesNumber[0], timesNumber[1])
-                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                     Z_Var = Z_Variables[Z_Var_Id]
-                            for subSubSub in subSub:
-                                for t in range(timesNumber[0], T_max_2):
-                                    Y_Var_Id = (frozenset(subSubSub), switches, ports, t)
-                                    if Y_Var_Id not in Y_Used:
-                                        if Y_Var_Id in Y_Variables:
-                                            try:
-                                                model.addCons(Y_Variables[Y_Var_Id] <= 1 - Z_Var)
-                                            except Exception:
-                                                pass
+                                    for subSubSub in subSub:
+                                        for t in range(timesNumber[0], T_max_2):
+                                            Y_Var_Id = (frozenset(subSubSub), switches, ports, t)
+                                            if Y_Var_Id not in Y_Used:
+                                                if Y_Var_Id in Y_Variables:
+                                                    try:
+                                                        model.addCons(Y_Variables[Y_Var_Id] <= 1 - Z_Var)
+                                                    except Exception:
+                                                        pass
 
 
-# ---------------------------------------------------------------------------
 # Constraint 7 — selectedSwitches
-# ---------------------------------------------------------------------------
 
 def constraintNum7selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                    usefulIntervalTime, subSets, model, T_max_1, T_max_2,
@@ -734,17 +688,17 @@ def constraintNum7selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                             for slots in numberSlotsSwitches[switches]:
                                 Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                             timesNumber[0], timesNumber[1])
-                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                                if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                     Z_Var = Z_Variables[Z_Var_Id]
-                            for subSubSub in sub:
-                                for t in range(timesNumber[0], T_max_2):
-                                    Y_Var_Id = (frozenset(subSubSub), switches, ports, t)
-                                    if Y_Var_Id not in Y_Used:
-                                        if Y_Var_Id in Y_Variables:
-                                            try:
-                                                model.addCons(Y_Variables[Y_Var_Id] <= 1 - Z_Var)
-                                            except Exception:
-                                                pass
+                                    for subSubSub in sub:
+                                        for t in range(timesNumber[0], T_max_2):
+                                            Y_Var_Id = (frozenset(subSubSub), switches, ports, t)
+                                            if Y_Var_Id not in Y_Used:
+                                                if Y_Var_Id in Y_Variables:
+                                                    try:
+                                                        model.addCons(Y_Variables[Y_Var_Id] <= 1 - Z_Var)
+                                                    except Exception:
+                                                        pass
     for switches in pSwitchesTopology:
         if switches not in AllClusters:
             for ports in pSwitchPorts[switches]:
@@ -756,25 +710,23 @@ def constraintNum7selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                 for slots in numberSlotsSwitches[switches]:
                                     Z_Var_Id = (frozenset(set_of_sets), slots, switches,
                                                 timesNumber[0], timesNumber[1])
-                                    if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables.keys():
+                                    if Z_Var_Id not in Z_Used and Z_Var_Id in Z_Variables:
                                         Z_Var = Z_Variables[Z_Var_Id]
-                                for subSubSub in subSub:
-                                    for t in range(timesNumber[0], T_max_2):
-                                        Y_Var_Id = (frozenset(subSubSub), switches, ports, t)
-                                        if Y_Var_Id not in Y_Used:
-                                            if Y_Var_Id in Y_Variables:
-                                                try:
-                                                    model.addCons(Y_Variables[Y_Var_Id] <= 1 - Z_Var)
-                                                except Exception:
-                                                    pass
+                                        for subSubSub in subSub:
+                                            for t in range(timesNumber[0], T_max_2):
+                                                Y_Var_Id = (frozenset(subSubSub), switches, ports, t)
+                                                if Y_Var_Id not in Y_Used:
+                                                    if Y_Var_Id in Y_Variables:
+                                                        try:
+                                                            model.addCons(Y_Variables[Y_Var_Id] <= 1 - Z_Var)
+                                                        except Exception:
+                                                            pass
 
 
-# ---------------------------------------------------------------------------
 # Constraint 8
-# ---------------------------------------------------------------------------
 
 def constraintNum8(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
-                   neighborsofEachSwitch, pSwitchPorts, Y_Used):
+                   neighborsofEachSwitch, pSwitchPorts, Y_Used, lazy=False):
     all_subsets = set()
     for sub in subSets:
         for subSub in sub:
@@ -795,12 +747,10 @@ def constraintNum8(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
                     model.addCons(sum(temporarySumArray) <= 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 9
-# ---------------------------------------------------------------------------
 
 def constraintNum9(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
-                   neighborsofEachSwitch, pSwitchPorts, Y_Used):
+                   neighborsofEachSwitch, pSwitchPorts, Y_Used, lazy=False):
     all_subsets = set()
     for sub in subSets:
         for subSub in sub:
@@ -821,9 +771,7 @@ def constraintNum9(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
                     model.addCons(sum(temporarySumArray) <= 1)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 10
-# ---------------------------------------------------------------------------
 
 def constraintNum10(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
                     neighborsofEachSwitch, pSwitchPorts, numAllFrags, Y_Used):
@@ -847,9 +795,7 @@ def constraintNum10(pSwitchesTopology, subSets, model, T_max_1, T_max_2,
     model.addCons(sum(keyDictYSum) == numAllFrags)
 
 
-# ---------------------------------------------------------------------------
 # Constraint 11
-# ---------------------------------------------------------------------------
 
 def constraintNum11(pSwitchesTopology, subSets, model, workersTopology,
                     pSwitchPorts, Y_Used, T_max_1):
@@ -865,22 +811,28 @@ def constraintNum11(pSwitchesTopology, subSets, model, workersTopology,
                                     model.addCons(Y_Variables[keyDictY] == 0)
 
 
-# ---------------------------------------------------------------------------
-# Constraint InArt — single aggregation per fragment (InArt assumption)
-# Each fragment can be aggregated at AT MOST ONE switch globally.
-# This enforces: for each fragment f, sum of all Z_vars involving f <= 1.
-# ---------------------------------------------------------------------------
+# Constraint InArt — single aggregation per fragment
 
-def constraintInArt(subSets, model, Z_Used, workersTopology, fragmentsofEachWorker):
+def constraintInArt(subSets, model, Z_Used, workersTopology, fragmentsofEachWorker,
+                    z_variables=None):
+    """Single-aggregation-per-fragment constraint (InArt baseline).
+
+    For every fragment *f* at most one Z-variable whose aggregated subset
+    contains *f* may be selected.  ``z_variables`` is the dict returned
+    by the model builder; when omitted the module-level ``Z_Variables``
+    global is used (legacy callers).
+    """
     all_fragments = set()
     for worker in fragmentsofEachWorker:
         for frag in fragmentsofEachWorker[worker]:
             all_fragments.add(frag)
 
+    _z = z_variables if z_variables is not None else Z_Variables
+
     for frag in all_fragments:
         frag_set = frozenset({frag})
         z_vars_for_frag = []
-        for key, var in Z_Variables.items():
+        for key, var in _z.items():
             if key in Z_Used:
                 continue
             subset_of_sets = key[0]

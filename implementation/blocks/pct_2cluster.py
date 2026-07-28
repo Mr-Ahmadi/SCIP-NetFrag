@@ -1,4 +1,3 @@
-"""Block downloaded from the old main.py — see blocks/__init__.py for the registry."""
 from blocks._imports import (
     BlockRun, TimeoutError, XLEN_RHO, YLEN_FRAG, YLEN_RUNTIME, _prepare_dict_list, _timeout_handler, _unpack_env, apply_constraints, create_Fragments, defineModel_selectedSwitches, env_2c_10sw_6f, np, objective, pct_labels, plot_single_bars, preProcessMappingY, preProcessMappingZ, signal, solveProblem, time,
 )
@@ -11,7 +10,7 @@ def run_pct_2cluster():
     maxAggregate = 3
     ittrNum = 3
     Percentages = [0.1, 0.3, 0.5, 0.7]
-    x_labels = pct_labels(Percentages)               # ['10%','30%','50%','70%']
+    x_labels = pct_labels(Percentages)
     solve_counter = 0
 
     run = BlockRun("pct_2cluster", config={
@@ -32,8 +31,6 @@ def run_pct_2cluster():
     errorRuntimesM = {m: [] for m in models}
     errorPacketsM = {m: [] for m in models}
 
-    # Total sub-solves across all percentages — computed once before the
-    # loops so the [N/total] counter is stable throughout the run.
     _env_tuple = _unpack_env(env_2c_10sw_6f)
     _dict_list_len = len(_prepare_dict_list(_env_tuple[9], _env_tuple[10]))
     total_solves = (len(models) * len(Percentages)
@@ -111,11 +108,6 @@ def run_pct_2cluster():
                             statuses.append(status)
                         except TimeoutError:
                             signal.alarm(0)
-                            # Solver ran for (close to) the full 60s SIGALRM
-                            # window — record that real elapsed time instead
-                            # of 0, so runtime statistics stay honest.
-                            # Previously `Runtime = 0` hid the actual cost
-                            # of timed-out solves.
                             Runtime = time.time() - tc0
                             solve_total += Runtime
                             print(f"  [{solve_counter}/{total_solves}] TIMEOUT "
@@ -155,12 +147,10 @@ def run_pct_2cluster():
     print("Packets:", kindsofModelsPackets)
     print("Runtime:", kindsofModelsRuntime)
 
-    # All sub-solves across all percentages are finished.
     print(f"\n>>> All {total_solves} sub-solves complete "
           f"(solve_counter={solve_counter}). Block finished in "
           f"{time.time() - block_start:.1f}s — proceeding to plots.")
 
-    # --- Plots (consistent style: percent ticks + ρ label + errorbars) ---
     pkt_series = kindsofModelsPackets[defineModel_selectedSwitches]
     rt_series = kindsofModelsRuntime[defineModel_selectedSwitches]
     pkt_std = [np.std(vals) for vals in errorPacketsM[defineModel_selectedSwitches]]
@@ -176,7 +166,6 @@ def run_pct_2cluster():
                      "plots/percentage_2cluster_runtime.pdf",
                      color_index=1, hatch='.', std=rt_std)
 
-    # --- Save clean JSON ---
     summary = run.summary(
         x_labels, series_order=model_labels,
         y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME, x_label=XLEN_RHO)

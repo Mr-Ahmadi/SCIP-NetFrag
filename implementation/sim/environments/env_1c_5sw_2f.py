@@ -5,7 +5,7 @@ Same physical 5-switch / 1-cluster topology, but each worker carries only
 2 fragments (vs 3 in env_1c_5sw_3f). Useful for separating the model's
 notion of "load" from "topology": same switches/cluster shape, fewer frags.
 """
-from sim.environments._common import build_env
+from sim.environments._common import build_env, rank_switches_by_ports
 
 
 def env_1c_5sw_2f(state):
@@ -21,7 +21,7 @@ def env_1c_5sw_2f(state):
                     55: {0: 2}, 66: {0: 2}, 77: {0: 3}, 88: {0: 3}}
 
     clusters = {0: [0, 1, 2, 3]}
-    selectedSwitches = [2, 3, 4, 0, 1]
+    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
     cutPorts = {0: {3: 2}, 1: {2: 3}, 2: {4: 4}, 3: {4: 4}, 4: {4: "PS"},
                 11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1},
                 55: {0: 2}, 66: {0: 2}, 77: {0: 3}, 88: {0: 3}}

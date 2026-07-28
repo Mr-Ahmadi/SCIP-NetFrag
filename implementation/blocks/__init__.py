@@ -1,15 +1,4 @@
-"""Experiment blocks.
-
-Each `run_<name>` function in this package corresponds to one top-level
-block selectable from the interactive prompt in `main.py`. Each block
-self-contains its own environment list, solve loop, and plotting code.
-
-The shared helpers (`_unpack_env`, `_prepare_dict_list`, `_prompt_block`,
-and the `BLOCKS` registry) live in `blocks._common`; the FlexINA-specific
-helpers (`_solve_flexina_once`, `_no_aggregation_packets`) live in
-`blocks._flexina_helpers`; the central imports re-export
-lives in `blocks._imports`.
-"""
+"""Experiment blocks — each run_<name> is selectable from main.py."""
 from blocks._common import BLOCKS, _prompt_block
 from blocks.baseline import run_baseline
 from blocks.models import run_models

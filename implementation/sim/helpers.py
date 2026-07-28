@@ -1,7 +1,13 @@
-"""
-Helper functions — key lookup, set intersection, pre-processing mappings.
-Moved verbatim from the original Accelerating_New.py.
-"""
+"""Helper functions — key lookup, set intersection, pre-processing mappings."""
+
+
+def build_frag_to_worker(fragmentsofEachWorker):
+    """Build reverse mapping: fragment id -> worker id."""
+    mapping = {}
+    for worker, frags in fragmentsofEachWorker.items():
+        for frag in frags:
+            mapping[frag] = worker
+    return mapping
 
 
 def find_keys_by_value(target_set, data_dict):
@@ -24,9 +30,6 @@ def remove_matching_pairs(pairs, numbers):
 
 
 def preProcessMappingY(Y_Used, allofSubsets):
-    # Union into a set to (a) make membership tests below O(1) and
-    # (b) prevent the |Y_Used| x |fragments| blow-up of the old list version
-    # (each slot was previously multiplying |Y_Used| by |allofSubsets|).
     if isinstance(Y_Used, list):
         Y_Used = set(Y_Used)
     new_entries = set()

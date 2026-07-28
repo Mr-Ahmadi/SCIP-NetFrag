@@ -1,7 +1,4 @@
-"""
-Objective function and problem solver.
-Moved verbatim from the original Accelerating_New.py.
-"""
+"""Objective function and problem solver."""
 import time
 
 import numpy as np
@@ -12,36 +9,33 @@ def objective(Y_Variables, model):
     model.setObjective(sum(Y_Variables_Array), "minimize")
 
 
-# Statuses produced by SCIP optimize() for which a feasible primal may
-# still be available (the LP root or some primal bound). For such cases
-# we can take model.getObjVal() and the variable values as a best-effort
-# answer instead of discarding all the work done up to the limit.
+# SCIP statuses where a feasible primal may still be available.
 _FEASIBLE_STATUSES = ("optimal", "timelimit", "nodelimit", "sollimit",
                       "stallnodelimit", "gaplimit")
 
 
-def solveProblem(model, Y_Used, Z_Used, time_limit=None):
+def solveProblem(model, Y_Used, Z_Used, time_limit=None, gap=None):
+    """
+    gap : optional relative MIP-gap tolerance in [0, 1).
+    """
     from . import constraints as _cons
 
     Y_Value_One = []
     Z_Value_One = []
     model.setParam("parallel/maxnthreads", 8)
-    # Optional SCIP-internal time limit (reliable, unlike SIGALRM which
-    # only fires once control returns to Python). Use this when callers
-    # need a hard upper bound on a single optimize() call.
     if time_limit is not None and time_limit > 0:
         model.setRealParam("limits/time", float(time_limit))
+    if gap is not None and gap > 0:
+        model.setRealParam("limits/gap", float(gap))
     startTime = time.time()
     model.optimize()
     finishTime = time.time()
     elapsed = finishTime - startTime
     status = model.getStatus()
-    # Did SCIP still find a feasible primal answer?
     has_primal = False
     obj_val = None
     try:
         if status in _FEASIBLE_STATUSES:
-            # getObjVal raises if no primal solution is available, so guard:
             obj_val = model.getObjVal()
             has_primal = (obj_val is not None
                           and np.isfinite(obj_val))

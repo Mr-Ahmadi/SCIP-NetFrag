@@ -1,22 +1,4 @@
-"""
-Block run recorder + shared plot/JSON conventions.
-
-Every experiment block in ``main.py`` produces a set of PDF plots and a
-single JSON file that captures *everything* needed to regenerate the
-plots offline (per-iteration observations, summary statistics, axis
-labels, and general run metadata such as total block wall time and per-
-solve construction + solve times).
-
-Conventions enforced here so plots across blocks stay consistent
-(edit in ONE place to change all blocks):
-
-* Axis labels      — ``YLEN_FRAG``, ``YLEN_RUNTIME``, ``XLEN_*`` constants.
-* Model legend labels & colors & hatches — ``MODEL_STYLE`` (4-model stack),
-  ``BASELINE_STYLE`` (optimal vs FlexINA), ``INART_STYLE`` (InArt vs FlexINA).
-* Observation row schema — one dict per ``(model, env, axis_value, ittr)``
-  spaced / per-cell observation, with both raw ``packets``/``runtime`` and
-  timing metrics (``construction_time_s``, ``solve_time_s``).
-"""
+"""Block run recorder and shared plot/JSON conventions."""
 from __future__ import annotations
 
 import json
@@ -28,9 +10,7 @@ from typing import Any
 
 import numpy as np
 
-# ---------------------------------------------------------------------
-# Axis-label conventions (single source of truth)
-# ---------------------------------------------------------------------
+# Axis-label constants (single source of truth)
 YLEN_FRAG = "# fragments"
 YLEN_RUNTIME = "runtime (s)"
 YLEN_RUNTIME_LOG = "runtime (s, $\\log_{10}$ scale)"
@@ -50,15 +30,30 @@ def pct_labels(percents):
     return [f"{int(round(p * 100))}%" for p in percents]
 
 
-# ---------------------------------------------------------------------
-# Legend / geometry layout (single source of truth — every block uses
-# these so legend placement, row count, and font size stay consistent)
-# ---------------------------------------------------------------------
-# Above-the-axes legend for grouped bar charts (one row of N).
+# Pretty x-axis labels for env_* functions.
+ENV_DISPLAY_NAMES = {
+    "env_1c_3sw_4f": "1 Cluster (3sw)",
+    "env_1c_5sw_2f": "1 Cluster (5sw, 2f)",
+    "env_1c_5sw_3f": "1 Cluster (5sw)",
+    "env_2c_10sw_3f": "2 Clusters (10sw)",
+    "env_2c_10sw_3f_sparse": "2 Clusters (Sparse)",
+    "env_2c_10sw_6f": "2 Clusters (6f)",
+    "env_2c_10sw_8f": "2 Clusters (8f)",
+    "env_2c_10sw_skew1": "2 Clusters (Zipf 1)",
+    "env_2c_10sw_skew15": "2 Clusters (Zipf 1.5)",
+    "env_2c_10sw_uneven": "2 Clusters (Uneven)",
+    "env_3c_14sw_4f": "3 Clusters (14sw)",
+}
+
+
+def env_labels(envs):
+    """Pretty x-axis labels for a list of env_* functions."""
+    return [ENV_DISPLAY_NAMES.get(e.__name__, e.__name__) for e in envs]
+
+
+# Legend / geometry layout (single source of truth)
 LEGEND_BBOX_BARS = (1.015, 1.11)
-# Above-the-axes legend for line / errorbar charts.
 LEGEND_BBOX_LINE = (0.5, 1.0)
-# Single-series bar chart (only one legend entry): below the axes.
 LEGEND_BBOX_SINGLE = (1.0, 1.0)
 
 LEGEND_SIZE = 14           # legend font across all plots
@@ -67,10 +62,7 @@ LEGEND_NCOL_2 = 2          # 2-model line plots
 BAR_WIDTH = 0.2            # grouped-bar group width per series
 
 
-# ---------------------------------------------------------------------
 # Model display styles (label/color/hatch/marker per series)
-# ---------------------------------------------------------------------
-# Indices into the project's seaborn palette (see sim.plot.style.palette).
 MODEL_LABELS = ["FixR-ToRS", "FixR-AS", "FlexR-ToRS", "FlexINA"]
 MODEL_COLORS = [5, 9, 13, 1]          # same across all 4-model blocks
 MODEL_HATCHES = ["/", "o", "*", "."]
@@ -88,8 +80,7 @@ INART_MARKERS = ["s--", "p--"]
 
 
 def model_style(keys):
-    """Return (labels, colors, hatches, markers) for a subset of style
-    arrays, indexed by position 0..3 of MODEL_LABELS."""
+    """Return (labels, colors, hatches, markers) for a subset of model styles."""
     idx = [MODEL_LABELS.index("FixR-ToRS"), MODEL_LABELS.index("FlexR-ToRS"),
            MODEL_LABELS.index("FlexR-AS"), MODEL_LABELS.index("FlexINA")]
     n = len(keys)
@@ -102,13 +93,8 @@ def model_style(keys):
     }
 
 
-# ---------------------------------------------------------------------
-# BlockRun — recorder for one block invocation
-# ---------------------------------------------------------------------
 def block_json_default(o):
-    """JSON encoder default for the block-IO schema. Handles numpy
-    integers/floats/arrays, Python sets, and ``time.struct_time`` so
-    BlockRun payloads (with numpy stats + ndarrays) serialize cleanly."""
+    """JSON encoder default for numpy scalars, sets, and struct_time."""
     if isinstance(o, (np.integer,)):
         return int(o)
     if isinstance(o, (np.floating,)):
@@ -126,47 +112,7 @@ def block_json_default(o):
 
 
 class BlockRun:
-    """Accumulate observations and metadata for one experiment block run,
-    then save as a single clean JSON file under plots/.
-
-    Schema (clean, stable, and enough to regenerate all of the block's
-    plots offline)::
-
-        {
-          "block":           "...",
-          "timestamp":       "2026-07-25T...Z",
-          "host":            "...",
-          "python":          "...",
-          "block_runtime_s": 12.34,         # total wall time
-          "config": {                       # fixed inputs to the block
-              ...
-          },
-          "axis": {                          # labels used on plots
-              "x": "...", "x_ticks": [...],
-              "y_fragments": "...", "y_runtime": "..."
-          },
-          "per_observation": [               # one row per iteration
-              {
-                "model": "...", "env": "...", "x": "...", "ittr": 0,
-                "packets": ..., "runtime": ...,
-                "construction_time_s": ...,  # build phase
-                "solve_time_s": ...,         # SCIP optimize
-                "status": "..."
-              }, ...
-          ],
-          "summary": {                       # ready to feed to plot_*
-              "labels":      [...],          # x-axis tick labels
-              "series": [                    # one per model/env in plot
-                  {
-                    "model": "...",
-                    "packets_mean": [...], "packets_std": [...],
-                    "runtime_mean": [...], "runtime_std": [...]
-                  }, ...
-              ],
-              "axis": {"x": "...", "y_fragments": "...", "y_runtime": "..."}
-          }
-        }
-    """
+    """Accumulate observations and metadata for one experiment block run."""
 
     def __init__(self, block: str, config: dict | None = None,
                  axis: dict | None = None):
@@ -178,16 +124,14 @@ class BlockRun:
         self.config = dict(config or {})
         self.axis = dict(axis or {})
         self.observations: list[dict] = []
-        # Per-model summary cache (labels + series dicts).
         self._summary: dict | None = None
 
-    # -- recording -------------------------------------------------
+    # -- recording
     def observe(self, *, model: str, env: str, x, ittr: int,
                 packets: float | None, runtime: float | None,
                 construction_time_s: float | None = None,
                 solve_time_s: float | None = None,
                 status: str | None = None, **extra):
-        """Append one observation row (one bar/point in a single iteration)."""
         row = {
             "model": model,
             "env": env,
@@ -202,19 +146,11 @@ class BlockRun:
         row.update(extra)
         self.observations.append(row)
 
-    # -- summary computation --------------------------------------
+    # -- summary computation
     def summary(self, x_labels, series_order, *,
                 y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME,
                 x_label=None):
-        """Compute mean/std per ``(model, x_label)`` bucket.
-
-        ``series_order`` is the ordered list of model/series names that
-        will appear in the plot (so the JSON summary mirrors what the PDF
-        shows). Returns a dict with ``labels`` (x-axis ticks) and
-        ``series`` (one entry per series with mean+std arrays for both
-        packets and runtime).
-        """
-        # Group by (model, x).
+        """Compute mean/std per (model, x_label) bucket."""
         buckets: dict[tuple, list[dict]] = {}
         for o in self.observations:
             buckets.setdefault((o["model"], o["x"]), []).append(o)
@@ -250,7 +186,7 @@ class BlockRun:
             },
         }
 
-    # -- build + save ---------------------------------------------
+    # -- build + save
     def to_dict(self) -> dict:
         return {
             "block": self.block,

@@ -1,4 +1,3 @@
-"""Block downloaded from the old main.py — see blocks/__init__.py for the registry."""
 from blocks._imports import (
     BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4, LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS, XLEN_TIME_WINDOW, YLEN_FRAG, YLEN_RUNTIME, _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments, defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID, defineModel_selectedSwitches, env_1c_5sw_3f, np, objective, pct_labels, plot_errorbar, plot_grouped_bars, preProcessMappingY, preProcessMappingZ, solveProblem, time,
 )
@@ -13,11 +12,9 @@ def run_time_window():
     ittrNum = 3
     PercentagesTimes = [0.4, 0.6, 1]
     percentage = 0.6
-    x_labels = pct_labels(PercentagesTimes)        # ['40%','60%','100%']
+    x_labels = pct_labels(PercentagesTimes)
     solve_counter = 0
 
-    # Total sub-solves across all time-windows — computed once before the
-    # loops so the [N/total] counter is stable throughout the run.
     _env_tuple = _unpack_env(env_1c_5sw_3f)
     _dict_list_len = len(_prepare_dict_list(_env_tuple[9], _env_tuple[10]))
     total_solves = (len(models) * len(PercentagesTimes) * (maxAggregate - 2)
@@ -133,12 +130,10 @@ def run_time_window():
     print("Packets:", kindsofModelsPackets)
     print("Runtime:", kindsofModelsRuntime)
 
-    # All sub-solves across all time-windows are finished.
     print(f"\n>>> All {total_solves} sub-solves complete "
           f"(solve_counter={solve_counter}). Block finished in "
           f"{time.time() - block_start:.1f}s — proceeding to plots.")
 
-    # --- Plots (consistent style) ---
     C_2 = kindsofModelsPackets[defineModel_ATP]
     C_3 = kindsofModelsPackets[defineModel_GRID]
     C_4 = kindsofModelsPackets[defineModel_ATP_GRID]
@@ -165,7 +160,6 @@ def run_time_window():
                   fmt_list=MODEL_MARKERS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    # --- Save clean JSON ---
     summary = run.summary(x_labels, series_order=MODEL_LABELS,
                           y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME,
                           x_label=XLEN_TIME_WINDOW)

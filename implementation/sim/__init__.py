@@ -1,9 +1,4 @@
-"""
-sim — modular simulation package (FlexINA).
-
-Backward-compatible: all public names are re-exported so that
-``from sim import defineModel`` (or any other name) works.
-"""
+"""sim — modular simulation package (FlexINA)."""
 
 from .utils import (
     TimeoutError,
@@ -43,7 +38,6 @@ from .models import (
     defineModel_GRID,
     defineModel_ATP_GRID,
     defineModel_selectedSwitches,
-    defineModel_InArt,
 )
 
 from .constraints import (

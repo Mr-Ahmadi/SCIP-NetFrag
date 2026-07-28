@@ -1,9 +1,4 @@
-"""Common imports re-exported for all block modules.
-
-Each block file starts with `from blocks._imports import *` so the same
-symbols visible at the top of the old monolithic `main.py` are available
-without having to maintain 12 near-identical import stanzas.
-"""
+"""Common imports re-exported for all block modules."""
 from sim import (
     env_1c_5sw_3f,
     env_1c_5sw_2f,
@@ -21,7 +16,6 @@ from sim import (
     defineModel_GRID,
     defineModel_ATP_GRID,
     defineModel_selectedSwitches,
-    defineModel_InArt,
     create_Fragments,
     preProcessMappingY,
     preProcessMappingZ,
@@ -45,7 +39,7 @@ from sim.block_io import (
     YLEN_FRAG, YLEN_RUNTIME, YLEN_RUNTIME_LOG,
     XLEN_AGG, XLEN_TOPOLOGY, XLEN_DISTRIBUTION,
     XLEN_RHO, XLEN_TAU_START, XLEN_TIME_WINDOW, XLEN_FRAGS, XLEN_SLOTS,
-    pct_labels,
+    pct_labels, env_labels, ENV_DISPLAY_NAMES,
     # Model styles
     MODEL_LABELS, MODEL_COLORS, MODEL_HATCHES, MODEL_MARKERS,
     BASELINE_LABELS, BASELINE_COLORS, BASELINE_HATCHES, BASELINE_MARKERS,
@@ -56,7 +50,7 @@ from sim.block_io import (
 )
 from blocks._common import _unpack_env, _prepare_dict_list
 
-# All blocks also use these top-level packages.
+# Common packages used by all blocks.
 import time
 import signal
 import json
@@ -67,8 +61,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import seaborn as sns
 
-# Ensure `from blocks._imports import *` re-exports every name above,
-# including underscore-prefixed ones (e.g. _unpack_env, _block_json_default).
-# Without this, Python's wildcard import only exports non-underscore names.
+# Re-export all names (including underscore-prefixed) for wildcard import.
 __all__ = [n for n in dir()
            if not n.startswith("__") and n != "__all__"]

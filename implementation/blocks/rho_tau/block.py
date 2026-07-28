@@ -1,4 +1,3 @@
-"""Block downloaded from the old main.py — see blocks/__init__.py for the registry."""
 import sys
 
 from blocks._imports import (
@@ -8,28 +7,14 @@ from blocks._imports import (
     style, time,
 )
 
-# ``train`` and ``predict`` are imported lazily inside the functions that
-# need them rather than at module top. This (a) keeps the package init
-# cheap (`blocks/__init__` -> `blocks.rho_tau_model` shim -> this module
-# does not pull torch/pandas eagerly), and (b) avoids runpy's "found in
-# sys.modules prior to execution" warning when users invoke
-# `python -m blocks.rho_tau.train` (otherwise importing `blocks` would
-# pre-load `blocks.rho_tau.train` before runpy runs it as __main__).
+# train/predict imported lazily to avoid pulling torch at package init time.
 
-
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
 
 def _train_with_args(data, out_model, out_eval, out_features, *,
                      epochs=200, hidden=128, n_layers=3, dropout=0.1,
                      lr=1e-3, val_frac=0.15, seed=7, test_env=None,
                      device=None):
-    """Invoke ``blocks.rho_tau.train.main()`` with a specific argument
-    vector. The training module is an argparse-driven CLI; rather than
-    monkey-patching ``main`` we temporarily swap ``sys.argv`` so the
-    argparse parser sees our choices, then restore the previous argv on
-    the way out (even on error)."""
+    """Invoke blocks.rho_tau.train.main() with a specific argument vector."""
     argv = ["blocks.rho_tau.train",
             "--data", str(data),
             "--out_model", str(out_model),
@@ -56,11 +41,9 @@ def _train_with_args(data, out_model, out_eval, out_features, *,
 
 
 def _load_per_solve(path):
-    """Read the ``per_solve`` rows that ``run_param_sweep`` emitted.
+    """Read per_solve rows from run_param_sweep output.
 
-    Returns ``([], None)`` if the JSON is missing or has no per-solve
-    rows so the block can short-circuit with a clear message instead of
-    crashing the whole run.
+    Returns ([], None) if the JSON is missing or has no per-solve rows.
     """
     if not os.path.exists(path):
         return [], None
@@ -71,20 +54,11 @@ def _load_per_solve(path):
 
 
 def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
-    """Drive ``blocks.rho_tau.predict.select_rho_tau`` on every unique state
-    in the per-solve data and compare with the actually observed
-    best (rho, tau) for that state.
-
-    Mirrors ``evaluate_selector`` in blocks.rho_tau.train but routes
-    through the public ``select_rho_tau`` inference path so this block
-    exercises the same code the online consumer uses.
-    """
+    """Evaluate selector on every unique state in per-solve data."""
     if not per_solve_rows:
         return []
 
-    # Group per-solve rows by the observable state signature used at
-    # decision time. This is a subset of the NUMERIC_FEATURES state
-    # columns (everything except rho/tau, which are the *action*).
+    # Group per-solve rows by observable state signature.
     state_cols = ["env", "ittr", "slot_idx", "T_max_1", "T_max_2",
                   "num_active_frags", "num_active_workers"]
     buckets = {}
@@ -94,19 +68,14 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
 
     out = []
     for key, rs in buckets.items():
-        # Observed best runtime for optimal solves — the oracle the
-        # selector is trying to recover.
+        # Observed best runtime for optimal solves (the oracle).
         ok = [r for r in rs if r["status"] == "optimal"]
         if not ok:
             continue
         best = min(ok, key=lambda r: r["runtime"])
         worst = max(ok, key=lambda r: r["runtime"])
 
-        # Build the inference state dict from the first row of the
-        # group. ``per_worker_num_frags`` keys arrive as ints from
-        # param_sweep but JSON round-trips them to strings — both are
-        # tolerated by ``select_rho_tau._complete_state`` (it just
-        # takes .values()). Forward the dict as-is.
+        # Build inference state dict from first row of the group.
         first = rs[0]
         state = {
             "env": first["env"],
@@ -127,8 +96,7 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
             rho_star, tau_star, pred_rt = prd.select_rho_tau(
                 state, model_pack=model_pack, device=device)
         except Exception as e:
-            # Selector failures shouldn't abort the whole block; record
-            # the failure as a regretted state so the JSON stays clean.
+            # Selector failure — record as a regretted state.
             out.append({
                 "env": first["env"], "ittr": first["ittr"],
                 "slot_idx": first["slot_idx"],
@@ -142,10 +110,7 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
             })
             continue
 
-        # Look up the actually observed runtime for the selected pair
-        # (if it was swept at all). If the pair wasn't tried in the
-        # sweep for this state, mark chosen_runtime as None so the plot
-        # can drop it.
+        # Look up actual runtime for the selected (rho, tau) pair.
         chosen = next((r for r in rs
                        if abs(r["rho"] - rho_star) < 1e-9
                        and r["tau"] == tau_star), None)
@@ -167,11 +132,7 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
 
 
 def _plot_regret_by_env(qualities, path):
-    """Grouped-bar chart: mean regret per env (s) with std errorbars.
-
-    One bar per env. Illustrates where the trained selector still has
-    headroom vs the per-state oracle.
-    """
+    """Grouped-bar chart: mean regret per env with std errorbars."""
     envs = sorted({q["env"] for q in qualities})
     means, stds = [], []
     for e in envs:
@@ -197,8 +158,7 @@ def _plot_regret_by_env(qualities, path):
 
 
 def _plot_pred_vs_actual(qualities, path):
-    """Scatter: predicted runtime vs the actually observed runtime for
-    the selected (rho, tau) pair. Points are coloured by env."""
+    """Scatter: predicted vs actual runtime for the selected (rho, tau)."""
     pts = [q for q in qualities
            if q["pred_runtime"] is not None and q["chosen_runtime"] is not None]
     if not pts:
@@ -231,25 +191,8 @@ def _plot_pred_vs_actual(qualities, path):
     save_fig(fig, path)
 
 
-# ---------------------------------------------------------------------
-# Block entry point
-# ---------------------------------------------------------------------
-
 def run_rho_tau_model():
-    """End-to-end block: train the (rho, tau_F) cost-predictor from
-    ``run_param_sweep``'s per-solve data, then exercise the inference
-    path (``blocks.rho_tau.predict.select_rho_tau``) on every
-    observable state in the same data and report selector regret vs
-    the per-state oracle.
-
-    Inputs:  plots/param_sweep_data.json   (produced by run_param_sweep)
-    Outputs: plots/rho_tau_model.pt        (trained PyTorch regressor)
-             plots/rho_tau_model_features.json (feature spec for inference)
-             plots/rho_tau_model_eval.json  (training metrics + LOTO split)
-             plots/rho_tau_model_regret_by_env.pdf
-             plots/rho_tau_model_pred_vs_actual.pdf
-             plots/rho_tau_model_data.json   (this block's BlockRun JSON)
-    """
+    """Train (rho, tau_F) cost-predictor and evaluate selector quality."""
     data_path = "plots/param_sweep_data.json"
     out_model = "plots/rho_tau_model.pt"
     out_eval = "plots/rho_tau_model_eval.json"
@@ -297,9 +240,7 @@ def run_rho_tau_model():
     run.config["envs_in_data"] = envs_seen
     print(f"  envs: {envs_seen}")
 
-    # -----------------------------------------------------------------
     # 1. Train
-    # -----------------------------------------------------------------
     print("\n[1/3] Training cost-predictor ...")
     train_t0 = time.time()
     _train_with_args(
@@ -310,10 +251,7 @@ def run_rho_tau_model():
     train_time = time.time() - train_t0
     print(f"  training done in {train_time:.1f}s")
 
-    # -----------------------------------------------------------------
-    # 2. Test — drive the inference path on every observable state in
-    #    the sweep data and record one BlockRun observation per state.
-    # -----------------------------------------------------------------
+    # 2. Test — drive inference path on every observable state.
     print("\n[2/3] Testing selector on observed states ...")
     eval_payload = {}
     if os.path.exists(out_eval):
@@ -344,9 +282,7 @@ def run_rho_tau_model():
             regret=q.get("regret"), gap_to_worst=q.get("gap_to_worst"),
             error=q.get("error"))
 
-    # -----------------------------------------------------------------
     # 3. Plots
-    # -----------------------------------------------------------------
     print("\n[3/3] Plotting ...")
     plot_files = []
     if qualities:
@@ -355,9 +291,6 @@ def run_rho_tau_model():
         _plot_pred_vs_actual(qualities, plot_pred_vs_act)
         plot_files.append(plot_pred_vs_act)
 
-    # -----------------------------------------------------------------
-    # Summary metrics for the BlockRun JSON
-    # -----------------------------------------------------------------
     regrets = [q["regret"] for q in qualities if q["regret"] is not None]
     gaps = [q["gap_to_worst"] for q in qualities if q["gap_to_worst"] is not None]
     summary = {

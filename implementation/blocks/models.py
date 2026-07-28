@@ -1,4 +1,3 @@
-"""Block downloaded from the old main.py — see blocks/__init__.py for the registry."""
 from blocks._imports import (
     BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4, LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS, XLEN_AGG, XLEN_FRAGS, XLEN_SLOTS, XLEN_TOPOLOGY, YLEN_FRAG, YLEN_RUNTIME, YLEN_RUNTIME_LOG, _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments, defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID, defineModel_selectedSwitches, env_2c_10sw_3f, np, objective, plot_errorbar, plot_grouped_bars, plot_single_bars, preProcessMappingY, preProcessMappingZ, solveProblem, time,
 )
@@ -7,7 +6,7 @@ def run_models():
     envs = [env_2c_10sw_3f]
     models = [defineModel_ATP, defineModel_GRID, defineModel_ATP_GRID,
               defineModel_selectedSwitches]
-    model_labels = MODEL_LABELS                    # 4-model style set
+    model_labels = MODEL_LABELS
 
     maxAggregate = 4
     ittrNum = 3
@@ -24,10 +23,7 @@ def run_models():
         "percentage": percentage,
         "T_max_2_init": 8,
         "addTime_factor": 1.0,
-        # Synthetic scalability rows (hardcoded in the original block;
-        # preserved for continuity — the per-iteration observations above
-        # don't directly back these two plots, so the data is stored here
-        # to keep them reproducible from JSON alone).
+        # Synthetic scalability rows (hardcoded in the original block).
         "scalability_tree": {
             "labels": ["8", "16", "24"],
             "runtime_s": [0.23863816261291504, 0.48981642723083496,
@@ -45,9 +41,6 @@ def run_models():
     kindsofModelsPackets = {}
     kindsofModelsRuntime = {}
 
-    # Total sub-solves across all envs — computed once before the loops so
-    # the [N/total] counter doesn't shift when envs have different
-    # dict_list sizes.
     _solve_per_env = {
         e: len(_prepare_dict_list(_unpack_env(e)[9], _unpack_env(e)[10]))
         for e in envs
@@ -146,13 +139,10 @@ def run_models():
     print("Packets:", kindsofModelsPackets)
     print("Runtime:", kindsofModelsRuntime)
 
-    # All sub-solves across all models/envs are finished.
     print(f"\n>>> All {total_solves} sub-solves complete "
           f"(solve_counter={solve_counter}). Block finished in "
           f"{time.time() - block_start:.1f}s — proceeding to plots.")
 
-    # --- Plots (consistent style) ---
-    # Aggregation axis — primary comparison.
     C_2 = kindsofModelsPackets[defineModel_ATP]
     C_3 = kindsofModelsPackets[defineModel_GRID]
     C_4 = kindsofModelsPackets[defineModel_ATP_GRID]
@@ -179,7 +169,6 @@ def run_models():
                   fmt_list=MODEL_MARKERS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    # Slot-axis (same data, retitled). Use XLEN_SLOTS.
     plot_grouped_bars(x_labels, [C_2, C_3, C_4, C_5], MODEL_LABELS,
                       YLEN_FRAG, XLEN_SLOTS,
                       "plots/aggregation_fragments_vs_slots.pdf",
@@ -192,29 +181,6 @@ def run_models():
                   fmt_list=MODEL_MARKERS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    # Topology-axis (same data, relabeled x ticks).
-    topo_labels = ['tree', '1 Cluster', '2 Clusters']
-    plot_grouped_bars(topo_labels, [C_2, C_3, C_4, C_5], MODEL_LABELS,
-                      YLEN_FRAG, XLEN_TOPOLOGY,
-                      "plots/aggregation_fragments_vs_topology.pdf",
-                      color_indices=MODEL_COLORS, hatch_list=MODEL_HATCHES,
-                      width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
-                      legend_ncol=LEGEND_NCOL_4, legend_size=LEGEND_SIZE)
-    plot_errorbar(topo_labels, [y2, y3, y4, y5], [e2, e3, e4, e5],
-                  MODEL_LABELS, YLEN_RUNTIME, XLEN_TOPOLOGY,
-                  "plots/aggregation_runtime_vs_topology_errorbar.pdf",
-                  fmt_list=MODEL_MARKERS,
-                  legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
-    plot_grouped_bars(topo_labels, [y2, y3, y4, y5], MODEL_LABELS,
-                      YLEN_RUNTIME_LOG, XLEN_TOPOLOGY,
-                      "plots/aggregation_runtime_vs_topology_logscale.pdf",
-                      color_indices=MODEL_COLORS, hatch_list=MODEL_HATCHES,
-                      width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
-                      legend_ncol=LEGEND_NCOL_4, legend_size=LEGEND_SIZE,
-                      log_scale=True)
-
-    # Scalability (synthetic rows from config). Same style as other
-    # single-series bar charts.
     tree_cfg = run.config["scalability_tree"]
     plot_single_bars(tree_cfg["labels"], tree_cfg["runtime_s"],
                     YLEN_RUNTIME, XLEN_FRAGS,
@@ -226,7 +192,6 @@ def run_models():
                     "plots/aggregation_scalability_fragments.pdf",
                     color_index=9, hatch='.')
 
-    # --- Save clean JSON ---
     summary = run.summary(
         x_labels, series_order=MODEL_LABELS,
         y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME, x_label=XLEN_AGG)
@@ -236,19 +201,6 @@ def run_models():
         "plots/aggregation_runtime_errorbar.pdf",
         "plots/aggregation_fragments_vs_slots.pdf",
         "plots/aggregation_runtime_vs_slots_errorbar.pdf",
-        "plots/aggregation_fragments_vs_topology.pdf",
-        "plots/aggregation_runtime_vs_topology_errorbar.pdf",
-        "plots/aggregation_runtime_vs_topology_logscale.pdf",
         "plots/aggregation_scalability_tree.pdf",
         "plots/aggregation_scalability_fragments.pdf",
     ]})
-
-
-# ============================================================
-# Block #1b-sparse — model comparison (4 models, sparse-slot env)
-# ============================================================
-# Mirror of run_models() over env_2c_10sw_3f_sparse — the 2-cluster
-# reference env with the legacy sparse aggregation-slot mask (switches
-# 2, 4, 6, 7, 9 carry no slot), reproducing the behaviour archived in
-# archive/Untitled.py's env_2Clusters. Plots and JSON log use the
-# models_sparse_* prefix so they never collide with the run_models

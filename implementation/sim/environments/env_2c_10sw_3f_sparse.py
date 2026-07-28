@@ -1,21 +1,10 @@
 """
-env_2c_10sw_3f_sparse — sparse-slot variant of the 2-cluster reference env.
+env_2c_10sw_3f_sparse — sparse-slot variant of env_2c_10sw_3f.
 
-Identical network (topology, ports, workers, fragments, steps-to-switches,
-clusters, selectedSwitches, cutPorts) to :func:`env_2c_10sw_3f`, with one
-difference: only a subset of switches expose an aggregation slot, matching
-the legacy ``env_2Clusters`` definition preserved in ``archive/Untitled.py``.
-
-Sparse-slot mask (switches with empty ``numberSlotsSwitches[sw]``):
-
-    switches 2, 4, 6, 7, 9   — no aggregation slot
-    switches 0, 1, 3, 5, 8   — one aggregation slot (``[0]``)
-
-Use this env from ``run_models_sparse`` to reproduce the archive's "models"
-block behaviour, in contrast to ``run_models`` which uses ``env_2c_10sw_3f``
-where *every* switch carries an aggregation slot.
+Only a subset of switches expose an aggregation slot:
+  switches 0,1,3,5,8 → one slot; switches 2,4,6,7,9 → no slot.
 """
-from sim.environments._common import build_env
+from sim.environments._common import build_env, rank_switches_by_ports
 
 
 def env_2c_10sw_3f_sparse(state):
@@ -36,7 +25,7 @@ def env_2c_10sw_3f_sparse(state):
                     11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1},
                     55: {0: 4}, 66: {0: 4}, 77: {0: 5}, 88: {0: 5}}
 
-    selectedSwitches = [2, 3, 6, 7, 8, 9, 0, 1, 4, 5]
+    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
     cutPorts = {0: {2: 2}, 1: {2: 2}, 2: {2: 8}, 3: {3: 9},
@@ -53,10 +42,7 @@ def env_2c_10sw_3f_sparse(state):
                              11: [0], 22: [0], 33: [1], 44: [1],
                              55: [4], 66: [4], 77: [5], 88: [5]}
 
-    # Sparse aggregation-slot availability — only switches {0,1,3,5,8}
-    # can host an aggregation slot. Switches {2,4,6,7,9} carry no slot,
-    # mirroring the legacy ``env_2Clusters`` definition (see module
-    # docstring).
+    # Only switches {0,1,3,5,8} carry an aggregation slot.
     numberSlotsSwitches = {0: [0], 1: [0], 2: [], 3: [0], 4: [], 5: [0],
                            6: [], 7: [], 8: [0], 9: []}
 

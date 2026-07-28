@@ -6,7 +6,7 @@ to 1 by Optimaze), joined through a single spine (2) that also carries "PS".
 4 frags/worker — moderate load. This probes how the model handles a much
 smaller switch count compared to the 5/10-switch envs.
 """
-from sim.environments._common import build_env
+from sim.environments._common import build_env, rank_switches_by_ports
 
 
 def env_1c_3sw_4f(state):
@@ -18,7 +18,7 @@ def env_1c_3sw_4f(state):
                     11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1}}
 
     clusters = {0: [0, 1]}
-    selectedSwitches = [2, 0, 1]
+    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
     cutPorts = {0: {3: 2}, 1: {3: 2}, 2: {2: "PS"},
                 11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1}}
 

@@ -8,19 +8,21 @@ port / neighbor / topology / fragment structures consistently.
 """
 
 
+def rank_switches_by_ports(pSwitchesTopology, pSwitchPorts):
+    """Rank switches by descending port count (FlexINA Phase 2 filtration).
+
+    Per the FlexINA paper (Sec. IV-B): "FlexINA ranks switches by port
+    count and selects the top rho%" — a higher port count means more
+    routing paths under the flexible routing model, improving the odds
+    of encountering and aggregating fragments. Ties are broken by each
+    switch's insertion order in ``pSwitchesTopology`` for determinism.
+    """
+    return sorted(pSwitchesTopology, key=lambda s: -len(pSwitchPorts[s]))
+
+
 def optimize_env(pSwitchPorts, neighborsofEachSwitch, workersTopology,
                  pWorkerPorts, fragmentsofEachWorker):
-    """
-    Common 'Optimaze' logic: identify duplicate workers per switch,
-    remove the extras, and rebuild ports / neighbors / topology / fragments.
-
-    Returns
-    -------
-    tuple
-        (pSwitchPortsNew, neighborsofEachSwitchNew, workersTopologyNew,
-         pWorkerPortsNew, workersNumberNew, fragmentsofEachWorkerNew,
-         numAllFragsNew)
-    """
+    """Collapse duplicate workers per switch and rebuild ports/neighbors/fragments."""
     switchWorkerLinks = {}
     workersDelete = []
 
@@ -83,21 +85,7 @@ def build_env(state, *, pSwitchesTopology, pSwitchPorts,
               neighborsofEachSwitch, numberSlotsSwitches, workersTopology,
               pWorkerPorts, fragmentsofEachWorker, stepsToSwitches,
               cutPorts, selectedSwitches, clusters):
-    """
-    Assemble the 15-element environment tuple that every other module expects.
-
-    If ``state == "Optimaze"``, the raw network is passed through
-    :func:`optimize_env` to deduplicate workers per switch before assembling.
-
-    Returns
-    -------
-    tuple
-        (pSwitchesTopology, pSwitchPorts, neighborsofEachSwitch,
-         pSwitchesNumber, numberSlotsSwitches, workersTopology,
-         pWorkerPorts, workersNumber, numAllFrags,
-         fragmentsofEachWorker, totalWorkers, stepsToSwitches,
-         cutPorts, selectedSwitches, clusters)
-    """
+    """Assemble the 15-element environment tuple. Deduplicates workers if state=="Optimaze"."""
     pSwitchesNumber = len(pSwitchesTopology)
     workersNumber = len(workersTopology)
     totalWorkers = fragmentsofEachWorker.copy()

@@ -1,17 +1,12 @@
-"""
-Inference helper: load the trained cost-predictor and pick (rho, tau_F)
-for a given observable environment state.
+"""Inference helper: load the trained cost-predictor and pick (rho, tau_F).
 
 Usage from another script:
     from blocks.rho_tau.predict import select_rho_tau
     rho, tau, runtime_pred = select_rho_tau(state)
 
-where `state` is a dict with at least:
-    num_switches, num_workers, num_all_frags, num_clusters,
+`state` keys: num_switches, num_workers, num_all_frags, num_clusters,
     num_active_frags, num_active_workers, T_max_1, T_max_2,
-    slot_idx, ittr, per_worker_num_frags
-
-`per_worker_num_frags` may be omitted — it defaults to empty (uniform hist).
+    slot_idx, ittr, per_worker_num_frags (optional).
 """
 import json
 import os
@@ -25,10 +20,8 @@ from blocks.rho_tau.train import (
     build_feature_matrix, rows_to_dataframe, _load_entropy,
 )
 
-# Resolve artéfacts relative to the implementation root (two levels up
-# from this file), so the default model/features paths stay stable
-# regardless of the caller's CWD.  Falls back to the package dir for
-# legacy callers that placed the .pt next to the source.
+# Resolve artéfacts relative to the implementation root so default
+# paths stay stable regardless of caller CWD.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _IMPL_ROOT = os.path.dirname(os.path.dirname(_HERE)) or _HERE
 DEFAULT_MODEL = os.path.join(_IMPL_ROOT, "plots", "rho_tau_model.pt")
@@ -95,16 +88,8 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
                    feasibility=None, reduction_floor=None, ref_pkts_by_env=None):
     """Pick (rho*, tau*) minimizing predicted runtime for `state`.
 
-    `state`: dict of observable fields (see module docstring).
-
-    Optional:
-      feasibility: dict[(rho, tau)] -> 0/1. Pairs marked 0 are skipped
-        (set to +inf cost). Pass None to allow all pairs.
-      reduction_floor: float in [0,1]. If given, require the *predicted*
-        packet reduction (1 - pred_packets/ref) to be >= this floor — but
-        the saved model only predicts runtime, so this is ignored unless a
-        packets head is added later. Kept for forward compatibility.
-      ref_pkts_by_env: kept for forward compatibility (unused here).
+    feasibility: dict[(rho, tau)] -> 0/1; pairs marked 0 are skipped.
+    reduction_floor / ref_pkts_by_env: kept for forward compatibility.
     """
     if model_pack is None:
         model_pack = load_model(device=device)
@@ -134,13 +119,10 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
     X, _ = build_feature_matrix(df, feature_stats=feature_stats)
     with torch.no_grad():
         Xt = torch.tensor(X, device=device)
-        # model predicts log1p(runtime); undo that.
-        # Clip raw output to a sane log range so OOD inputs (unseen
-        # topologies) can't produce exp() overflow / inf predictions.
         pred_log = model(Xt).cpu().numpy()
-    pred_log = np.clip(pred_log, -5.0, 5.0)   # expm1(5) \u2248 147s, plenty of headroom
+    pred_log = np.clip(pred_log, -5.0, 5.0)   # expm1(5) ~ 147s, plenty of headroom
     pred_rt = np.expm1(pred_log)
-    pred_rt = np.maximum(pred_rt, 0.0)        # runtime is non-negative
+    pred_rt = np.maximum(pred_rt, 0.0)
     if feasibility is not None:
         for i, (rho, tau) in enumerate(zip(df["rho"], df["tau"])):
             if not feasibility.get((float(rho), int(tau)), 1):

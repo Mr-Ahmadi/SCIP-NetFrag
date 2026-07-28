@@ -1,23 +1,5 @@
 """
 Offline training of a (rho, tau_F) selector from param_sweep data.
-
-Reads:  plots/param_sweep_data.json  (the `per_solve` rows produced by
-        `run_param_sweep`).
-Writes: plots/rho_tau_model.pt       (trained PyTorch regressor state)
-        plots/rho_tau_model_eval.json (train/val metrics + leave-one-env-out)
-        plots/rho_tau_model_features.json (feature spec, for the inference
-                                            module to rebuild the encoder)
-
-Model: a small MLP "cost predictor" — it predicts runtime given
-(state, load, rho, tau). The selector then evaluates the regressor over the
-whole (rho, tau) grid for a given state and argmins runtime (subject to an
-optional packet-reduction floor, taken from the no-aggregation reference
-recorded during the sweep via the `rows` block).
-
-Usage:
-    python -m blocks.rho_tau.train                 # default settings
-    python -m blocks.rho_tau.train --epochs 300 --hidden 128
-    python -m blocks.rho_tau.train --test_env env_1c_5sw_3f  # LOTO split
 """
 import argparse
 import json
@@ -29,12 +11,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
-
-# ---------------------------------------------------------------------------
-# Feature engineering
-# ---------------------------------------------------------------------------
-# Inputs to the model. Topology and load are observable at decision time;
-# `rho` and `tau` are the actions whose cost we want to predict.
 
 NUMERIC_FEATURES = [
     "rho",
@@ -49,8 +25,7 @@ NUMERIC_FEATURES = [
     "T_max_2",
     "slot_idx",
     "ittr",
-    # engineered cross terms — the MLP finds them anyway, but seeding the
-    # first layer with them speeds convergence a lot on this small dataset.
+    # engineered cross terms for faster convergence
     "rho_x_active_frags",   # rho * num_active_frags
     "tau_x_workers",        # tau * num_workers
     "tau_over_frags",       # tau / (num_active_frags+1)
@@ -58,9 +33,7 @@ NUMERIC_FEATURES = [
     "load_entropy",         # entropy of per-worker fragment distribution
 ]
 
-# Number of per-worker histogram bins for `per_worker_num_frags`.
-# Capped so unseen topologies (with more workers) still encode cleanly into a
-# fixed-width vector.
+# Per-worker histogram bins (capped for unseen topologies).
 WORKER_HIST_BINS = 8
 
 FEATURE_DIM = len(NUMERIC_FEATURES) + WORKER_HIST_BINS
@@ -83,7 +56,7 @@ def rows_to_dataframe(per_solve_rows):
         counts = np.array(list(pw.values()), dtype=float)
         hist = np.zeros(WORKER_HIST_BINS, dtype=float)
         if counts.size:
-            # bin the per-worker fragment counts up to WORKER_HIST_BINS.
+            # bin per-worker fragment counts.
             for c in counts:
                 b = int(min(WORKER_HIST_BINS - 1, c))
                 hist[b] += 1
@@ -120,8 +93,7 @@ def rows_to_dataframe(per_solve_rows):
 
 
 def build_feature_matrix(df, feature_stats=None, fit_stats=False):
-    """Return (X, y_runtime, feature_stats). feature_stats holds the
-    mean/std used to standardize NUMERIC_FEATURES; pass it back at inference."""
+    """Return (X, feature_stats). Pass feature_stats back at inference."""
     X_num = df[NUMERIC_FEATURES].values.astype(np.float32)
     hist_cols = [f"whist_{i}" for i in range(WORKER_HIST_BINS)]
     X_hist = df[hist_cols].values.astype(np.float32)
@@ -139,10 +111,6 @@ def build_feature_matrix(df, feature_stats=None, fit_stats=False):
     return X, feature_stats
 
 
-# ---------------------------------------------------------------------------
-# Model
-# ---------------------------------------------------------------------------
-
 class CostMLP(nn.Module):
     def __init__(self, in_dim=FEATURE_DIM, hidden=128, n_layers=3, dropout=0.1):
         super().__init__()
@@ -158,18 +126,8 @@ class CostMLP(nn.Module):
         return self.net(x).squeeze(-1)
 
 
-# ---------------------------------------------------------------------------
-# Training loop
-# ---------------------------------------------------------------------------
-
 def _runtime_target(df):
-    """Runtime target with a penalty for non-optimal solves.
-
-    The cost predictor needs to know the *cost* of picking a (rho, tau) at a
-    given state, even when that pair produced `skip:` or `timeout`. We map
-    non-optimal rows to a runtime penalty larger than any observed optimal
-    runtime so the argmin selector learns to avoid those pairs.
-    """
+    """Runtime target with penalty for non-optimal solves."""
     ok = df.loc[df["status"] == "optimal", "runtime"].values
     if ok.size == 0:
         penalty_floor = 30.0
@@ -228,19 +186,8 @@ def train(X_tr, y_tr, X_val, y_val, *, hidden=128, n_layers=3, dropout=0.1,
     return model, best_val
 
 
-# ---------------------------------------------------------------------------
-# Evaluation: how good is the *selector* built from the cost predictor?
-# ---------------------------------------------------------------------------
-
 def make_selector(model, feature_stats, df_full, rho_grid, tau_grid, device):
-    """Return a function state_dict -> (rho*, tau*) that:
-       1. enumerates all (rho, tau) in the grids,
-       2. builds the feature vector for that hypothetical action,
-       3. predicts runtime,
-       4. argmins (skipping infeasible pairs seen in training, if any).
-    """
-    # Precompute per-(rho,tau) feasibility mask from training data: a pair
-    # is "ever feasible" if it produced at least one optimal solve anywhere.
+    """Return a function state_dict -> (rho*, tau*, predicted_runtime)."""
     feasible = df_full.groupby(["rho", "tau"])["status"].apply(
         lambda s: int((s == "optimal").any())).to_dict()
 
@@ -263,7 +210,6 @@ def make_selector(model, feature_stats, df_full, rho_grid, tau_grid, device):
         with torch.no_grad():
             Xt = torch.tensor(X, device=device)
             pred = model(Xt).cpu().numpy()
-        # set infeasible pairs to +inf so argmin skips them
         for i, (rho, tau) in enumerate(zip(df["rho"], df["tau"])):
             if not feasible.get((rho, tau), 1):
                 pred[i] = np.inf
@@ -274,23 +220,17 @@ def make_selector(model, feature_stats, df_full, rho_grid, tau_grid, device):
 
 
 def evaluate_selector(select, df_eval):
-    """For each unique (env, ittr, slot_idx, T_max_1, T_max_2) state in the
-    eval set, ask the selector for (rho*, tau*), then look up the *actually
-    observed* runtime/packets for that pair (from df_eval). Compare with the
-    best achievable pair on that same state (oracle) and the worst.
-    """
+    """Evaluate selector quality: compare chosen (rho, tau) with oracle."""
     state_cols = ["env", "ittr", "slot_idx", "T_max_1", "T_max_2",
                   "num_active_frags", "num_active_workers"]
     groups = df_eval.groupby(state_cols, sort=False)
     rows = []
     for key, g in groups:
-        # Build the state template (everything except rho/tau).
         state = {c: g[c].iloc[0] for c in NUMERIC_FEATURES
                  if c not in ("rho", "tau")}
         state.update({c: g[c].iloc[0] for c in
                       ["num_switches", "num_workers", "num_all_frags",
                        "num_clusters", "slot_idx", "ittr", "T_max_1", "T_max_2"]})
-        # Restore per-worker histogram from the first row's whist_ cols.
         for i in range(WORKER_HIST_BINS):
             state[f"whist_{i}"] = g[f"whist_{i}"].iloc[0]
         rho_star, tau_star, _ = select(state)
@@ -327,10 +267,6 @@ def evaluate_selector(select, df_eval):
         "frac_worst_avoided": float((r["gap_to_worst"] > 0.5).mean()),
     }
 
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def main():
     p = argparse.ArgumentParser(prog="blocks.rho_tau.train")
@@ -409,7 +345,6 @@ def main():
         hidden=args.hidden, n_layers=args.n_layers, dropout=args.dropout,
         epochs=args.epochs, lr=args.lr, device=device)
 
-    # ---- Save model + feature spec ----
     torch.save({
         "state_dict": model.state_dict(),
         "feature_stats": {k: v.tolist() for k, v in feature_stats.items()},
@@ -421,7 +356,6 @@ def main():
     }, args.out_model)
     print(f"Saved model -> {args.out_model}")
 
-    # ---- Selector evaluation ----
     rho_grid = sorted(df["rho"].unique())
     tau_grid = sorted(df["tau"].unique())
     rho_grid = [float(x) for x in rho_grid]
@@ -435,9 +369,7 @@ def main():
 
     select = make_selector(model, feature_stats, df, rho_grid, tau_grid, device)
 
-    # In-sample / val selector quality:
     eval_on = pd.concat([tr_df, val_df])
-    # We need `status`/`packets`/`runtime` columns intact — they are.
     sel_tr = evaluate_selector(select, eval_on)
     if sel_tr is not None:
         print("\nSelector quality on train+val states:")

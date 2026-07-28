@@ -1,4 +1,3 @@
-"""Block downloaded from the old main.py — see blocks/__init__.py for the registry."""
 from blocks._imports import (
     BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4, LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS, XLEN_DISTRIBUTION, YLEN_FRAG, YLEN_RUNTIME, YLEN_RUNTIME_LOG, _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments, defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID, defineModel_selectedSwitches, env_2c_10sw_3f, env_2c_10sw_skew1, env_2c_10sw_skew15, np, objective, plot_errorbar, plot_grouped_bars, preProcessMappingY, preProcessMappingZ, solveProblem, time,
 )
@@ -33,9 +32,6 @@ def run_worker_dist():
     kindsofModelsPackets = {}
     kindsofModelsRuntime = {}
 
-    # Total sub-solves across all envs — computed once before the loops so
-    # the [N/total] counter doesn't shift when envs have different
-    # dict_list sizes.
     _solve_per_env = {
         e: len(_prepare_dict_list(_unpack_env(e)[9], _unpack_env(e)[10]))
         for e in envs
@@ -134,12 +130,10 @@ def run_worker_dist():
     print("Packets:", kindsofModelsPackets)
     print("Runtime:", kindsofModelsRuntime)
 
-    # All sub-solves across all models/envs are finished.
     print(f"\n>>> All {total_solves} sub-solves complete "
           f"(solve_counter={solve_counter}). Block finished in "
           f"{time.time() - block_start:.1f}s — proceeding to plots.")
 
-    # --- Plots (consistent style; log-scale variant now honest) ---
     C_2 = kindsofModelsPackets[defineModel_ATP]
     C_3 = kindsofModelsPackets[defineModel_GRID]
     C_4 = kindsofModelsPackets[defineModel_ATP_GRID]
@@ -157,7 +151,6 @@ def run_worker_dist():
     y4 = kindsofModelsRuntime[defineModel_ATP_GRID]
     y5 = kindsofModelsRuntime[defineModel_selectedSwitches]
 
-    # Log scale: now the log ylabel is matched by log_scale=True.
     plot_grouped_bars(x_labels, [y2, y3, y4, y5], MODEL_LABELS,
                       YLEN_RUNTIME_LOG, XLEN_DISTRIBUTION,
                       "plots/distribution_runtime.pdf",
@@ -176,7 +169,6 @@ def run_worker_dist():
                   fmt_list=MODEL_MARKERS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    # --- Save clean JSON ---
     summary = run.summary(x_labels, series_order=MODEL_LABELS,
                           y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME,
                           x_label=XLEN_DISTRIBUTION)

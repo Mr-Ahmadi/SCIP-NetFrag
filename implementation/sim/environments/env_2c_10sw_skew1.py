@@ -1,7 +1,7 @@
 """
 env_2c_10sw_skew1 — maximally skewed 2-cluster env (all 8 workers on sw5).
 """
-from sim.environments._common import build_env
+from sim.environments._common import build_env, rank_switches_by_ports
 
 
 def env_2c_10sw_skew1(state):
@@ -22,7 +22,7 @@ def env_2c_10sw_skew1(state):
                     11: {0: 5}, 22: {0: 5}, 33: {0: 5}, 44: {0: 5},
                     55: {0: 5}, 66: {0: 5}, 77: {0: 5}, 88: {0: 5}}
 
-    selectedSwitches = [2, 3, 6, 7, 8, 9, 0, 1, 4, 5]
+    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
     cutPorts = {0: {2: 2}, 1: {2: 2}, 2: {2: 8}, 3: {3: 9},

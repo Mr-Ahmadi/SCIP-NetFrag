@@ -1,17 +1,9 @@
 """
-env_3c_14sw_4f — 3-cluster env (14 switches), new topology shape.
+env_3c_14sw_4f — 3-cluster env, 14 switches, 4 frags/worker.
 
-Structure (verified symmetric):
-    cluster 0 : switches {0,1,2,3}   — workers 211,212 (sw0), 213,214 (sw1)
-    cluster 1 : switches {4,5,6,7}   — workers 215,216 (sw4), 217,218 (sw5)
-    cluster 2 : switches {8,9,12,13} — workers 219,220 (sw8), 221,222 (sw9)
-    fabric    : switches {10,11}     — carry "PS"
-
-Worker ids are >= 200 so they never collide with switch ids (0..13).
-This is the only env with `num_clusters == 3`, so it directly probes the
-model's ability to generalise to higher cluster counts.
+Workers use IDs >= 200 to avoid collision with switch IDs.
 """
-from sim.environments._common import build_env
+from sim.environments._common import build_env, rank_switches_by_ports
 
 
 def env_3c_14sw_4f(state):
@@ -46,7 +38,7 @@ def env_3c_14sw_4f(state):
     }
 
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7], 2: [8, 9, 12, 13]}
-    selectedSwitches = [2, 3, 6, 7, 10, 11, 0, 1, 4, 5, 8, 9]
+    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
 
     cutPorts = {
         10: {3: "PS"}, 11: {3: "PS"},

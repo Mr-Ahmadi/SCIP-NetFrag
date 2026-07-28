@@ -1,10 +1,4 @@
-"""
-main.py — entry point for all experiment blocks.
-
-User selects which block to run at startup. The actual block
-implementations live in the `blocks/` package; this file is just a thin
-dispatcher.
-"""
+"""Entry point for all experiment blocks."""
 import os
 import sys
 

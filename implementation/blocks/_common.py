@@ -1,8 +1,4 @@
-"""Shared helpers and metadata used across all experiment blocks.
-
-Kept separate so each block module can `from blocks._common import *`
-and not have to repeat the boilerplate.
-"""
+"""Shared helpers and metadata used across all experiment blocks."""
 import sys
 
 
@@ -15,7 +11,7 @@ BLOCKS = {
     "start_time":     "Block #2: start time experiment",
     "time_window":    "Block #3: time window experiment",
     "worker_dist":    "Block #4: worker distribution experiment",
-    "inart":          "Block #5: InArt vs FlexINA comparison",
+    "inart":          "Block #5: InArt vs FlexINA comparison (single-PS structural proxy, not full InArt algorithm)",
     "param_sweep":    "Block #6: 2-D (rho x tau_F) sweep - heatmaps + trade-off scatter",
     "rho_tau_model":  "Block #7: train + test (rho, tau_F) cost-predictor (param_sweep -> model + selector eval)",
 }

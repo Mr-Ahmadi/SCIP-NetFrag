@@ -1,12 +1,8 @@
 """
-env_2c_10sw_skew15 — 2-cluster env with all 4 cluster-0 workers on the
-*same* switch (workers 33,44 moved onto switch 0 alongside 11,22).
-After Optimaze dedup, only one worker per switch survives, so this env's
-"Zipf-1.5" skew (4 distinct workers -> 4 unique switches by dedup) reduces
-to the same effective worker set as env_2c_10sw_3f; kept for historical
-parity with the inference-time worker placement studied in the paper.
+env_2c_10sw_skew15 — Zipf-1.5 worker placement.
+All 4 cluster-0 workers on switch 0; 4 cluster-1 workers on switch 5.
 """
-from sim.environments._common import build_env
+from sim.environments._common import build_env, rank_switches_by_ports
 
 
 def env_2c_10sw_skew15(state):
@@ -27,7 +23,7 @@ def env_2c_10sw_skew15(state):
                     11: {0: 0}, 22: {0: 0}, 33: {0: 0}, 44: {0: 0},
                     55: {0: 5}, 66: {0: 5}, 77: {0: 5}, 88: {0: 5}}
 
-    selectedSwitches = [2, 3, 6, 7, 8, 9, 0, 1, 4, 5]
+    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
     cutPorts = {0: {2: 2}, 1: {2: 2}, 2: {2: 8}, 3: {3: 9},

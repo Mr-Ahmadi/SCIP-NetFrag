@@ -1,17 +1,5 @@
-"""
-env_2c_10sw_8f — heavy-load 2-cluster variant, 8 frags/worker.
-
-Same physical topology as env_2c_10sw_3f, but each worker carries 8
-fragments instead of 3. With longer fragment lists the ILP windows span
-more work, so the optimal (rho, tau_F) should shift toward larger windows
-— useful for the model to learn the "more load -> need larger tau" rule.
-
-Topology:
-    cluster 0 : switches {0,1,2,3}  — workers 11,22 (sw0), 33,44 (sw1)
-    cluster 1 : switches {4,5,6,7}  — workers 55,66 (sw4), 77,88 (sw5)
-    spines    : switches {8,9}      — carry "PS"
-"""
-from sim.environments._common import build_env
+"""env_2c_10sw_8f — 2-cluster, 8 frags/worker (heavy load)."""
+from sim.environments._common import build_env, rank_switches_by_ports
 
 
 def env_2c_10sw_8f(state):
@@ -32,7 +20,7 @@ def env_2c_10sw_8f(state):
                     11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1},
                     55: {0: 4}, 66: {0: 4}, 77: {0: 5}, 88: {0: 5}}
 
-    selectedSwitches = [2, 3, 6, 7, 8, 9, 0, 1, 4, 5]
+    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
     cutPorts = {0: {2: 2}, 1: {2: 2}, 2: {2: 8}, 3: {3: 9},
