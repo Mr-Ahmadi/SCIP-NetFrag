@@ -6,7 +6,7 @@ from blocks._imports import (
 
 def _solve_flexina_once(env_tuple, dict_list_items, max_aggregation,
                         T_max_1, T_max_2, percentage, steps_to_switches=None,
-                        timeout_sec=60, apply_fn=None, gap=None,
+                        timeout_sec=120, apply_fn=None, gap=None,
                         Y_Used=None, Z_Used=None):
     """Run one FlexINA SCIP solve for a single dict_list slice.
 
@@ -18,10 +18,19 @@ def _solve_flexina_once(env_tuple, dict_list_items, max_aggregation,
         apply_fn = apply_constraints
     (pSwitchesTopology, pSwitchPorts, neighborsofEachSwitch,
      pSwitchesNumber, numberSlotsSwitches, workersTopology,
-     pWorkerPorts, workersNumber, numAllFrags,
-     _, _totalWorkers, _stepsToSwitches, cutPorts, selectedSwitches,
+     pWorkerPorts, workersNumber, _, _, _totalWorkers,
+     _stepsToSwitches, cutPorts, selectedSwitches,
      clusters) = env_tuple
     stepsToSwitches = _stepsToSwitches if steps_to_switches is None else steps_to_switches
+    # constraintNum10 enforces conservation against the fragments present in
+    # THIS slot's solve, so numAllFrags must be the per-slot count, not the
+    # env-wide one (they only coincide when every worker carries one fragment).
+    numAllFrags = sum(len(v) for v in dict_list_items.values())
+    # A slot only models the workers that emit fragments in it — with uneven
+    # loads some workers idle out of later slots and must not appear in the
+    # model/constraints (no-op when every slot carries every worker).
+    workersTopology = {w: sw for w, sw in workersTopology.items()
+                       if w in dict_list_items}
 
     Y_Used = set() if Y_Used is None else Y_Used
     Z_Used = set() if Z_Used is None else Z_Used
@@ -77,7 +86,7 @@ def _solve_flexina_once(env_tuple, dict_list_items, max_aggregation,
 
 
 def _no_aggregation_packets(env_tuple, dict_list, T_max_1, T_max_2,
-                            timeout_sec=60):
+                            timeout_sec=120):
     """Run FlexINA with max_aggregation=1 (no aggregation) for reference packet count."""
     total_packets = 0
     total_runtime = 0.0

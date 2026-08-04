@@ -191,7 +191,7 @@ def run_baseline():
     save_fig(fig, "plots/basic_runtime_vs_aggregation.pdf")
 
     plot_grouped_bars(x_labels, [y1, y5], BASELINE_LABELS,
-                      YLEN_FRAG, XLEN_AGG,
+                      YLEN_RUNTIME, XLEN_AGG,
                       "plots/basic_runtime_vs_aggregation_bars.pdf",
                       color_indices=BASELINE_COLORS, hatch_list=BASELINE_HATCHES,
                       width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,

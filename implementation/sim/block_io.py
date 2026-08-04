@@ -36,10 +36,9 @@ ENV_DISPLAY_NAMES = {
     "env_1c_5sw_2f": "1 Cluster (5sw, 2f)",
     "env_1c_5sw_3f": "1 Cluster (5sw)",
     "env_2c_10sw_3f": "2 Clusters (10sw)",
-    "env_2c_10sw_3f_sparse": "2 Clusters (Sparse)",
     "env_2c_10sw_6f": "2 Clusters (6f)",
     "env_2c_10sw_8f": "2 Clusters (8f)",
-    "env_2c_10sw_skew1": "2 Clusters (Zipf 1)",
+    "env_2c_10sw_skew1": "2 Clusters (Zipf 2)",
     "env_2c_10sw_skew15": "2 Clusters (Zipf 1.5)",
     "env_2c_10sw_uneven": "2 Clusters (Uneven)",
     "env_3c_14sw_4f": "3 Clusters (14sw)",
@@ -77,20 +76,6 @@ INART_LABELS = ["InArt", "FlexINA"]
 INART_COLORS = [5, 1]
 INART_HATCHES = ["/", "."]
 INART_MARKERS = ["s--", "p--"]
-
-
-def model_style(keys):
-    """Return (labels, colors, hatches, markers) for a subset of model styles."""
-    idx = [MODEL_LABELS.index("FixR-ToRS"), MODEL_LABELS.index("FlexR-ToRS"),
-           MODEL_LABELS.index("FlexR-AS"), MODEL_LABELS.index("FlexINA")]
-    n = len(keys)
-    return {
-        "labels": [MODEL_LABELS[k] for k in keys],
-        "colors": [MODEL_COLORS[k] for k in keys],
-        "hatches": [MODEL_HATCHES[k] for k in keys],
-        "markers": [MODEL_MARKERS[k] for k in keys],
-        "n": n,
-    }
 
 
 def block_json_default(o):

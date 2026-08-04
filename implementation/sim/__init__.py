@@ -23,7 +23,6 @@ from .environments import (
     env_1c_5sw_2f,
     env_1c_3sw_4f,
     env_2c_10sw_3f,
-    env_2c_10sw_3f_sparse,
     env_2c_10sw_6f,
     env_2c_10sw_8f,
     env_2c_10sw_uneven,

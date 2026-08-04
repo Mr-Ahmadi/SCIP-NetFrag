@@ -1,9 +1,9 @@
 from blocks._imports import (
-    BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4, LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS, XLEN_TIME_WINDOW, YLEN_FRAG, YLEN_RUNTIME, _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments, defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID, defineModel_selectedSwitches, env_1c_5sw_3f, np, objective, pct_labels, plot_errorbar, plot_grouped_bars, preProcessMappingY, preProcessMappingZ, solveProblem, time,
+    BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4, LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS, XLEN_TIME_WINDOW, YLEN_FRAG, YLEN_RUNTIME, _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments, defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID, defineModel_selectedSwitches, env_2c_10sw_3f, np, objective, pct_labels, plot_errorbar, plot_grouped_bars, preProcessMappingY, preProcessMappingZ, solveProblem, time,
 )
 
 def run_time_window():
-    envs = [env_1c_5sw_3f]
+    envs = [env_2c_10sw_3f]
     models = [defineModel_ATP, defineModel_GRID, defineModel_ATP_GRID,
               defineModel_selectedSwitches]
     model_labels = MODEL_LABELS
@@ -15,7 +15,7 @@ def run_time_window():
     x_labels = pct_labels(PercentagesTimes)
     solve_counter = 0
 
-    _env_tuple = _unpack_env(env_1c_5sw_3f)
+    _env_tuple = _unpack_env(env_2c_10sw_3f)
     _dict_list_len = len(_prepare_dict_list(_env_tuple[9], _env_tuple[10]))
     total_solves = (len(models) * len(PercentagesTimes) * (maxAggregate - 2)
                     * ittrNum * _dict_list_len)
@@ -47,7 +47,7 @@ def run_time_window():
         for percentageTime in PercentagesTimes:
             errorRuntime.append([])
             errorPackets.append([])
-            envTemp = env_1c_5sw_3f
+            envTemp = env_2c_10sw_3f
             (pSwitchesTopology, pSwitchPorts, neighborsofEachSwitch,
              pSwitchesNumber, numberSlotsSwitches, workersTopology,
              pWorkerPorts, workersNumber, numAllFrags,

@@ -34,7 +34,7 @@ You will be prompted to select an experiment block:
   worker_dist      — Block #4: worker distribution experiment
   inart            — Block #5: InArt vs FlexINA comparison
   param_sweep      — Block #6: 2-D (ρ × τ_F) sweep — heatmaps + trade-off scatter
-  online_model     — Block #7: online adaptive (ρ,τ_F) — k-NN vs SGD
+  rho_tau_model    — Block #7: train + test (ρ, τ_F) cost-predictor (param_sweep → model + selector eval)
 ```
 
 ## Project Structure
@@ -63,7 +63,6 @@ SCIP-NetFrag/
 │   │   ├── _flexina_helpers.py # FlexINA per-solve helper (InArt + param_sweep)
 │   │   ├── baseline.py         # Block #1: baseline comparison
 │   │   ├── models.py           # Block #1b: 4-model comparison
-│   │   ├── models_sparse.py    # Block #1b-sparse: 4-model sparse-slot comparison
 │   │   ├── pct_2cluster.py     # Block #1c: switch percentage (2-cluster)
 │   │   ├── pct_1cluster.py     # Block #1d: switch percentage (1-cluster)
 │   │   ├── start_time.py       # Block #2: start time experiment
@@ -82,8 +81,7 @@ SCIP-NetFrag/
 | Environment                 | Switches | Workers | Fragments/Worker | Description                     |
 |-----------------------------|----------|---------|------------------|---------------------------------|
 | `env_1Cluster_Test`         | 5        | 8       | 3                | Single cluster, small topology  |
-| `env_2Clusters`             | 10       | 8       | 3                | Two clusters                    |
-| `env_2Clusters_Sparse`      | 10       | 8       | 3                | Two clusters, sparse aggregation slots (`env_2c_10sw_3f_sparse`) |
+| `env_2Clusters`             | 10       | 8       | 3                | Two clusters (`env_2c_10sw_3f`), sparse aggregation slots (only switches {0,1,3,5,8}) |
 | `env_2Clusters_Percentages` | 10       | 8       | 6                | Two clusters, more fragments    |
 | `env_2Clusters_Zipf15`      | 10       | 8       | 3 (Zipf 1.5)     | Zipf distribution (alpha=1.5)   |
 | `env_2Clusters_Zipf2`       | 10       | 8       | 3 (Zipf 2.0)     | Zipf distribution (alpha=2.0)   |
@@ -91,36 +89,37 @@ SCIP-NetFrag/
 ## Experiment Blocks
 
 - **baseline** — Compares optimal model vs FlexINA across aggregation levels (max 1-3). Uses `env_1Cluster_Test`.
-- **models** — Compares 4 models (FixR-ToRS, FixR-AS, FlexR-ToRS, FlexINA) across aggregation levels. Uses `env_2c_10sw_3f`.
-- **models_sparse** — Same 4-model comparison as `models`, but over `env_2c_10sw_3f_sparse`, the legacy `env_2Clusters` definition (only switches {0,1,3,5,8} expose an aggregation slot). Use to reproduce the archive's "models" block. Outputs `plots/models_sparse_*.pdf` and `plots/models_sparse_data.json` alongside `run_models`'s `plots/aggregation_*.pdf` / `plots/models_data.json`.
+- **models** — Compares 4 models (FixR-ToRS, FixR-AS, FlexR-ToRS, FlexINA) across aggregation levels. Uses `env_2c_10sw_3f` (the legacy `env_2Clusters` definition, with aggregation slots only on switches {0,1,3,5,8}).
 - **pct_2cluster** — Studies effect of switch selection percentage (10%-70%) on fragments and runtime. Uses `env_2Clusters_Percentages`.
 - **pct_1cluster** — Same as pct_2cluster but on the smaller `env_1Cluster_Test` environment.
 - **start_time** — Varies the start time window (8-11 slots). Uses `env_2Clusters`.
 - **time_window** — Varies the time window percentage (40%-100%). Uses `env_1Cluster_Test`.
 - **worker_dist** — Compares uniform vs Zipf worker distributions. Uses all 2-cluster environments.
 - **inart** — Compares InArt vs FlexINA. Uses `env_2Clusters`. InArt here is a single-PS structural proxy: FlexINA's own model/routing/scheduling plus InArt's INA constraint (each fragment aggregated in-network at most once, i.e. no chained aggregation) — it does **not** implement InArt's actual multi-PS model-splitting (L-InArt) or randomized-rounding route selection (R-InArt), since every environment here has only one PS. See `blocks/inart_comparison.py`'s module docstring for details.
-- **param_sweep** — Block #6 — joint 2-D sweep of switch selection fraction ρ (10%-90% in 10% steps; 9 values) and time-window τ_F (6-14 slots). Sweeps across 3 environments (`env_1Cluster_Test`, `env_2Clusters`, `env_2Clusters_Percentages`). Plots two heatmaps per environment (fragments + runtime, annotated cell-by-cell, fonts scale with grid size) plus, per environment, a trade-off scatter (packet-reduction vs runtime) with the Pareto front drawn inline. When SCIP hits the per-solve time limit but a feasible primal has been found, the cell is filled with the best-effort suboptimal solution (status `timelimit`) rather than left as `nan`, so the heatmap shows the actual exploitable trade-off surface. Saves raw grid and per-cell observations to `plots/param_sweep_data.json`; saves the standalone trade-off rows to `plots/param_sweep_tradeoff_data.json`.
-- **online_model** — Block #8 — Online adaptive (ρ, τ_F) controller that updates per step. Compares two online regressors (k-NN vs linear SGD) on identical episode streams for a fair online comparison. Plots learning-curve, action trace, and runtime trace; saves raw log as `plots/online_model_log.json`.
+- **param_sweep** — Block #6 — joint 2-D sweep of switch selection fraction ρ (10%-90% in 10% steps; 9 values) and time-window τ_F (6-12 slots). Sweeps in load-preserving mode across 5 environments spanning the topology/load axes (`env_1c_5sw_3f`, `env_2c_10sw_3f`, `env_2c_10sw_6f`, `env_2c_10sw_skew15`, `env_3c_14sw_4f`). Plots two heatmaps per environment (fragments + runtime, annotated cell-by-cell, fonts scale with grid size) plus, per environment, a trade-off scatter (packet-reduction vs runtime) with the Pareto front drawn inline. When SCIP hits the per-solve time limit but a feasible primal has been found, the cell is filled with the best-effort suboptimal solution (status `timelimit`) rather than left as `nan`, so the heatmap shows the actual exploitable trade-off surface. Saves raw grid, per-cell observations, and a per-sub-solve `per_solve` array (per-slot state + load — the training data for `rho_tau_model`) to `plots/param_sweep_data.json`; saves the standalone trade-off rows to `plots/param_sweep_tradeoff_data.json`.
+- **rho_tau_model** — Block #7 — offline (ρ, τ_F) cost-predictor trained on the `per_solve` rows of `param_sweep`, then used as a selector: for each observable state it picks the (ρ, τ_F) minimizing a user-chosen objective (predicted solve time and/or predicted packet count, via `objective` + importance weights `W_RUNTIME`/`W_PACKETS` in `blocks/rho_tau/block.py`) and reports oracle regret / gap-to-worst per environment.
 
-## Online Adaptive (ρ, τ_F) Model
+## (ρ, τ_F) Cost-Predictor Model
 
-The `online_model` block (block #8) trains two **incremental online** regressors side-by-side to adaptively select the FlexINA parameters (ρ — switch selection fraction, τ_F — time-window size) per slot, using only quantities a real controller can observe *before* dispatching a slot.
+The `rho_tau_model` block (block #7) trains an offline **multi-objective** MLP cost-predictor on the `per_solve` rows of `param_sweep`, then uses it as a selector: for each observable state it picks the (ρ, τ_F) minimizing a user-chosen objective — predicted per-slot solve time and/or predicted ILP packet count (the primary objective) — and reports oracle regret.
 
-**State features (`implementation/sim/online_model.extract_state_features`):**
-- `num_switches`, `num_workers`, `num_clusters` (topology, known at setup)
-- `num_active_frags` (fragments active in the current slot)
-- `avg_steps_to_switch` (topology-derived)
-- `iteration_index`, `T_max_2_current` (schedule position)
+**Training data** — `plots/param_sweep_data.json` → `per_solve` (one row per sub-solve: `env`, `rho`, `tau`, `ittr`, `slot_idx`, `status`, `packets`, `runtime`, `T_max_1`/`T_max_2`, topology counts, `num_active_frags`, `per_worker_num_frags`). Non-`optimal` solves are penalized to a floor on BOTH targets (runtime **and** packets) so the model learns to avoid infeasible/timeout regions regardless of which objective is weighed.
 
-No realized runtime/packets are fed back into the state — that would leak the reward and inflate reported performance.
+**Features** (`blocks/rho_tau/train.py`, `NUMERIC_FEATURES`): topology (`num_switches`, `num_workers`, `num_all_frags`, `num_clusters`), per-slot load (`num_active_frags`, `num_active_workers`, plus a capped 8-bin histogram of `per_worker_num_frags`), schedule position (`slot_idx`), the two knobs (`rho`, `tau`), and engineered cross terms (`rho_x_active_frags`, `tau_x_workers`, `tau_over_frags`, `active_ratio`, `load_entropy`). `T_max_1`/`T_max_2` are deliberately **not** features — each is a deterministic function of `(slot_idx, tau)` which are already inputs (`T_max_1 = slot_idx·int(0.6τ)`, `T_max_2 = τ + T_max_1`); `ittr` is likewise excluded because it is a pure repetition index that re-solves the same state and carries no causal signal. `ittr` is still retained in the data and used as a grouping key at evaluation time so each iteration contributes an independent regret sample.
 
-**Models (fair online comparison):**
-1. **`OnlineKNN`** — action-conditioned incremental k-NN. For each candidate (ρ, τ), averages inverse-distance-weighted past runtimes of observations using the *same* action; never-tried actions get an optimistic estimate so they get explored.
-2. **`OnlineSGD`** — one `sklearn.linear_model.SGDRegressor` per action, updated via `partial_fit` after every realized runtime. Truly incremental.
+**Model output** (`CostMLP`, `n_out=2`) — two standardized log1p targets: `[pred_runtime, pred_packets]`, equal-weighted Huber loss on both (z-scores computed on the train split and stored in the checkpoint as `target_stats`). Old single-output checkpoints (`n_out=1`) still load and fall back to runtime-only selection.
 
-**Control policy (`OnlineController`):** ε-greedy with decay (`ε ← max(ε_min, ε·decay^t)`); picks the action with the smallest predicted runtime (reward = −runtime). Bad solves (infeasible / timeout / SCIP time-limit triggered) commit to both models as a large penalty runtime so they learn to avoid those (ρ, τ) at that state.
+**Selector** — `blocks/rho_tau/predict.py::select_rho_tau` enumerates the (ρ, τ_F) grid, keeps only pairs that ever solved optimally (`feasibility`), and minimizes `score = w_runtime·z_runtime + w_packets·z_packets`. Because the two heads output standardized values, the importance ratio `w_runtime : w_packets` is directly interpretable (units of training-set std). `objective` selects the axes: `'runtime'` → (1, 0), `'packets'` → (0, 1), `'tradeoff'` → the weights. Configure it in `blocks/rho_tau/block.py` via the module constants `OBJECTIVE`, `W_RUNTIME`, `W_PACKETS` (recorded in the block config), or per-call via the `predict` CLI (`--objective`, `--w_runtime`, `--w_packets`). The exact same path is used at train-eval time (`train.evaluate_selector` delegates to it, with `--objective`/`--w_runtime`/`--w_packets` on the train CLI) and in the block's selector evaluation, so the two cannot drift. Because the window is a consequence of the chosen (τ_F, slot), not part of the pre-choice state, the selector needs no window arithmetic: candidate features are reconstructed from the observable state alone.
 
-Outputs (in `plots/`): `online_model_learning_curve.pdf`, `online_model_action_trace.pdf`, `online_model_runtime_trace.pdf`, and `online_model_log.json` (raw per-step log).
+**Evaluation** — `blocks/rho_tau/block.py` groups per-solve rows by observable state, computes the oracle best/worst runtime and best/worst packets within each group, and reports `regret` (chosen − best runtime), `packet_regret` (chosen − best packets) and `gap_to_worst` per environment.
+
+**CLIs** (both argparse):
+```bash
+python -m blocks.rho_tau.train --data plots/param_sweep_data.json --epochs 200 --objective tradeoff --w_runtime 1.0 --w_packets 1.0
+python -m blocks.rho_tau.predict --num_switches 5 --num_workers 4 --num_all_frags 4 --num_clusters 1 --per_worker_num_frags '{"11":1,"33":1,"55":1,"77":1}' --objective packets --w_packets 2.0
+```
+
+Outputs (in `plots/`): `rho_tau_model.pt`, `rho_tau_model_features.json`, `rho_tau_model_eval.json`, `rho_tau_model_data.json` (block envelope + per-state quality), `rho_tau_model_regret_by_env.pdf`, `rho_tau_model_pred_vs_actual.pdf`.
 
 ## Output
 
@@ -161,6 +160,7 @@ Every block records its run statistics into a single JSON file in `plots/`, comp
 | `worker_dist`    | `plots/worker_dist_data.json`      |
 | `inart`          | `plots/inart_data.json`            |
 | `param_sweep`    | `plots/param_sweep_data.json` (with the `per_solve`/`grids` keys still present for use by `blocks/rho_tau/train.py`) and standalone `param_sweep_tradeoff_data.json` |
+| `rho_tau_model`  | `plots/rho_tau_model_data.json` (+ `rho_tau_model.pt`, `rho_tau_model_features.json`, `rho_tau_model_eval.json`) |
 
 Each JSON file contains the same general-information envelope (provided by `sim.block_io.BlockRun`):
 

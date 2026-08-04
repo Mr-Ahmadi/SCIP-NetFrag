@@ -9,7 +9,7 @@ Topology:
     cluster 1 : switches {4,5,6,7}  — workers 55,66 (sw4), 77,88 (sw5)
     spines    : switches {8,9}      — carry "PS"
 """
-from sim.environments._common import build_env, rank_switches_by_ports
+from sim.environments._common import build_env
 
 
 def env_2c_10sw_3f(state):
@@ -30,7 +30,7 @@ def env_2c_10sw_3f(state):
                     11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1},
                     55: {0: 4}, 66: {0: 4}, 77: {0: 5}, 88: {0: 5}}
 
-    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
+    selectedSwitches = [2, 3, 6, 7, 8, 9, 0, 1, 4, 5]
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
     cutPorts = {0: {2: 2}, 1: {2: 2}, 2: {2: 8}, 3: {3: 9},
@@ -47,8 +47,8 @@ def env_2c_10sw_3f(state):
                              11: [0], 22: [0], 33: [1], 44: [1],
                              55: [4], 66: [4], 77: [5], 88: [5]}
 
-    numberSlotsSwitches = {0: [0], 1: [0], 2: [0], 3: [0], 4: [0], 5: [0],
-                           6: [0], 7: [0], 8: [0], 9: [0]}
+    numberSlotsSwitches = {0: [0], 1: [0], 2: [], 3: [0], 4: [], 5: [0],
+                           6: [], 7: [], 8: [0], 9: []}
 
     workersTopology = {11: 0, 22: 0, 33: 1, 44: 1,
                        55: 4, 66: 4, 77: 5, 88: 5}

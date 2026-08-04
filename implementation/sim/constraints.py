@@ -263,10 +263,9 @@ def constraintNum3selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                         keyDictNeighborsY = []
                                         for t in range(max(timesNumber[0] - 1, 0), timesNumber[1]):
                                             for neighbor in neighborsofEachSwitch[switches]:
-                                                try:
-                                                    portNeighborSwitch = pSwitchPorts[neighbor]
-                                                except Exception:
-                                                    pass
+                                                if neighbor not in pSwitchPorts:
+                                                    continue
+                                                portNeighborSwitch = pSwitchPorts[neighbor]
                                                 for portt in portNeighborSwitch:
                                                     if portNeighborSwitch[portt] == switches:
                                                         keyDictY = (frozenset(subSubSub), neighbor, portt, t)
@@ -350,10 +349,9 @@ def constraintNum3selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                                         keyDictNeighborsY = []
                                         for t in range(T_max_1, timesNumber[1]):
                                             for neighbor in neighborsofEachSwitch[switches]:
-                                                try:
-                                                    portNeighborSwitch = pSwitchPorts[neighbor]
-                                                except Exception:
-                                                    pass
+                                                if neighbor not in pSwitchPorts:
+                                                    continue
+                                                portNeighborSwitch = pSwitchPorts[neighbor]
                                                 for portt in portNeighborSwitch:
                                                     if portNeighborSwitch[portt] == switches:
                                                         if neighbor in workersTopology:
@@ -462,10 +460,9 @@ def constraintNum4selectedSwitches(pSwitchesTopology, numberSlotsSwitches,
                                     for t in range(max(0, timesNumber[0] - 1), timesNumber[1]):
                                         keyDictNeighborsY = []
                                         for neighbor in neighborsofEachSwitch[switches]:
-                                            try:
-                                                portNeighborSwitch = pSwitchPorts[neighbor]
-                                            except Exception:
-                                                pass
+                                            if neighbor not in pSwitchPorts:
+                                                continue
+                                            portNeighborSwitch = pSwitchPorts[neighbor]
                                             for portt in portNeighborSwitch:
                                                 if portNeighborSwitch[portt] == switches:
                                                     for subSubSub in subSub:
@@ -534,10 +531,9 @@ def constraintNum4selectedSwitchesATP(pSwitchesTopology, numberSlotsSwitches,
                                     for t in range(T_max_1, timesNumber[1]):
                                         keyDictNeighborsY = []
                                         for neighbor in neighborsofEachSwitch[switches]:
-                                            try:
-                                                portNeighborSwitch = pSwitchPorts[neighbor]
-                                            except Exception:
-                                                pass
+                                            if neighbor not in pSwitchPorts:
+                                                continue
+                                            portNeighborSwitch = pSwitchPorts[neighbor]
                                             for portt in portNeighborSwitch:
                                                 if portNeighborSwitch[portt] == switches:
                                                     if neighbor in workersTopology:
@@ -630,10 +626,9 @@ def constraintNum6(pSwitchesTopology, numberSlotsSwitches, usefulIntervalTime,
                     keyDictNeighborsY = []
                     if time != 0:
                         for neighbor in neighborsofEachSwitch[switches]:
-                            try:
-                                portNeighborSwitch = pSwitchPorts[neighbor]
-                            except Exception:
-                                pass
+                            if neighbor not in pSwitchPorts:
+                                continue
+                            portNeighborSwitch = pSwitchPorts[neighbor]
                             for portt in portNeighborSwitch:
                                 if portNeighborSwitch[portt] == switches:
                                     keyDictY2 = (frozenset(union_set), neighbor, portt, time - 1)

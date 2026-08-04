@@ -21,8 +21,14 @@ def rank_switches_by_ports(pSwitchesTopology, pSwitchPorts):
 
 
 def optimize_env(pSwitchPorts, neighborsofEachSwitch, workersTopology,
-                 pWorkerPorts, fragmentsofEachWorker):
-    """Collapse duplicate workers per switch and rebuild ports/neighbors/fragments."""
+                 pWorkerPorts, fragmentsofEachWorker, keep_fragments=False):
+    """Collapse duplicate workers per switch and rebuild ports/neighbors/fragments.
+
+    ``keep_fragments=True`` keeps every fragment of the collapsed workers on
+    the surviving worker (load-preserving, used by ``state="OptimazeLoad"``);
+    the default truncates each survivor to its first fragment (legacy
+    ``state="Optimaze"`` behaviour).
+    """
     switchWorkerLinks = {}
     workersDelete = []
 
@@ -71,7 +77,7 @@ def optimize_env(pSwitchPorts, neighborsofEachSwitch, workersTopology,
     for worker in fragmentsofEachWorker:
         if worker not in workersDelete:
             fragmentsofEachWorkerNew[worker] = fragmentsofEachWorker[worker].copy()
-            if len(fragmentsofEachWorkerNew[worker]) > 1:
+            if not keep_fragments and len(fragmentsofEachWorkerNew[worker]) > 1:
                 fragmentsofEachWorkerNew[worker] = [fragmentsofEachWorkerNew[worker][0]]
 
     numAllFragsNew = sum(len(v) for v in fragmentsofEachWorkerNew.values())
@@ -85,18 +91,21 @@ def build_env(state, *, pSwitchesTopology, pSwitchPorts,
               neighborsofEachSwitch, numberSlotsSwitches, workersTopology,
               pWorkerPorts, fragmentsofEachWorker, stepsToSwitches,
               cutPorts, selectedSwitches, clusters):
-    """Assemble the 15-element environment tuple. Deduplicates workers if state=="Optimaze"."""
+    """Assemble the 15-element environment tuple. Deduplicates workers if state=="Optimaze"
+    (truncating each survivor to one fragment) or == "OptimazeLoad" (keeping all fragments)."""
     pSwitchesNumber = len(pSwitchesTopology)
     workersNumber = len(workersTopology)
     totalWorkers = fragmentsofEachWorker.copy()
     numAllFrags = sum(len(v) for v in fragmentsofEachWorker.values())
 
-    if state == "Optimaze":
+    if state in ("Optimaze", "OptimazeLoad"):
+        keep_fragments = (state == "OptimazeLoad")
         (pSwitchPorts, neighborsofEachSwitch, workersTopology,
          pWorkerPorts, workersNumber, fragmentsofEachWorker,
          numAllFrags) = optimize_env(pSwitchPorts, neighborsofEachSwitch,
                                      workersTopology, pWorkerPorts,
-                                     fragmentsofEachWorker)
+                                     fragmentsofEachWorker,
+                                     keep_fragments=keep_fragments)
 
     return (pSwitchesTopology, pSwitchPorts, neighborsofEachSwitch,
             pSwitchesNumber, numberSlotsSwitches, workersTopology,

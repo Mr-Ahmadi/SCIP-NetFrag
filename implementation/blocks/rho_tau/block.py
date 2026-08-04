@@ -13,7 +13,8 @@ from blocks._imports import (
 def _train_with_args(data, out_model, out_eval, out_features, *,
                      epochs=200, hidden=128, n_layers=3, dropout=0.1,
                      lr=1e-3, val_frac=0.15, seed=7, test_env=None,
-                     device=None):
+                     device=None, objective="tradeoff",
+                     w_runtime=1.0, w_packets=1.0):
     """Invoke blocks.rho_tau.train.main() with a specific argument vector."""
     argv = ["blocks.rho_tau.train",
             "--data", str(data),
@@ -26,7 +27,10 @@ def _train_with_args(data, out_model, out_eval, out_features, *,
             "--dropout", str(dropout),
             "--lr", str(lr),
             "--val_frac", str(val_frac),
-            "--seed", str(seed)]
+            "--seed", str(seed),
+            "--objective", objective,
+            "--w_runtime", str(w_runtime),
+            "--w_packets", str(w_packets)]
     if test_env:
         argv += ["--test_env", test_env]
     if device:
@@ -53,13 +57,24 @@ def _load_per_solve(path):
     return rows, payload
 
 
-def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
-    """Evaluate selector on every unique state in per-solve data."""
+def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
+                      objective="tradeoff", w_runtime=1.0, w_packets=1.0):
+    """Evaluate selector on every unique state in per-solve data.
+
+    objective/weights must match the trained config (see module constants
+    OBJECTIVE / W_RUNTIME / W_PACKETS in run_rho_tau_model).
+    """
     if not per_solve_rows:
         return []
 
-    # Group per-solve rows by observable state signature.
-    state_cols = ["env", "ittr", "slot_idx", "T_max_1", "T_max_2",
+    # Group per-solve rows by the state observable before choosing (rho, tau).
+    # T_max_1/T_max_2 are NOT part of the state (deterministic of the chosen
+    # tau/slot — including them would freeze each group to a single tau and
+    # turn the (rho, tau) selector into a rho-only one). ittr is a pure
+    # repetition index, so it is not a model feature either, but it IS a
+    # grouping key so each iteration yields an independent regret sample
+    # instead of being averaged away.
+    state_cols = ["env", "ittr", "slot_idx",
                   "num_active_frags", "num_active_workers"]
     buckets = {}
     for r in per_solve_rows:
@@ -68,12 +83,14 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
 
     out = []
     for key, rs in buckets.items():
-        # Observed best runtime for optimal solves (the oracle).
+        # Observed best/worst runtime and packets for optimal solves (oracle).
         ok = [r for r in rs if r["status"] == "optimal"]
         if not ok:
             continue
         best = min(ok, key=lambda r: r["runtime"])
         worst = max(ok, key=lambda r: r["runtime"])
+        best_pk = min(ok, key=lambda r: r["packets"])
+        worst_pk = max(ok, key=lambda r: r["packets"])
 
         # Build inference state dict from first row of the group.
         first = rs[0]
@@ -85,27 +102,36 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
             "num_clusters": first["num_clusters"],
             "num_active_frags": first["num_active_frags"],
             "num_active_workers": first["num_active_workers"],
-            "T_max_1": first["T_max_1"],
-            "T_max_2": first["T_max_2"],
             "slot_idx": first["slot_idx"],
-            "ittr": first["ittr"],
             "per_worker_num_frags": first.get("per_worker_num_frags") or {},
         }
         try:
             from blocks.rho_tau import predict as prd
-            rho_star, tau_star, pred_rt = prd.select_rho_tau(
-                state, model_pack=model_pack, device=device)
+            # A (rho, tau) pair is selectable for this state only if it ever
+            # solved optimally here. Explicitly mark every grid pair (missing
+            # keys would otherwise default to "feasible" in select_rho_tau).
+            feas = {(float(r), int(t)): 0
+                    for r in model_pack["rho_grid"]
+                    for t in model_pack["tau_grid"]}
+            for r in rs:
+                if r["status"] == "optimal":
+                    feas[(float(r["rho"]), int(r["tau"]))] = 1
+            rho_star, tau_star, pred_rt, pred_pk = prd.select_rho_tau(
+                state, model_pack=model_pack, device=device, feasibility=feas,
+                objective=objective, w_runtime=w_runtime, w_packets=w_packets)
         except Exception as e:
             # Selector failure — record as a regretted state.
             out.append({
                 "env": first["env"], "ittr": first["ittr"],
                 "slot_idx": first["slot_idx"],
                 "rho_star": None, "tau_star": None,
-                "pred_runtime": None,
+                "pred_runtime": None, "pred_packets": None,
                 "best_runtime": float(best["runtime"]),
                 "worst_runtime": float(worst["runtime"]),
-                "chosen_runtime": None,
-                "regret": None, "gap_to_worst": None,
+                "best_packets": float(best_pk["packets"]),
+                "worst_packets": float(worst_pk["packets"]),
+                "chosen_runtime": None, "chosen_packets": None,
+                "regret": None, "packet_regret": None, "gap_to_worst": None,
                 "error": f"{type(e).__name__}: {e}",
             })
             continue
@@ -115,7 +141,9 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
                        if abs(r["rho"] - rho_star) < 1e-9
                        and r["tau"] == tau_star), None)
         chosen_rt = float(chosen["runtime"]) if chosen and chosen["status"] == "optimal" else None
+        chosen_pk = float(chosen["packets"]) if chosen and chosen["status"] == "optimal" else None
         regret = (chosen_rt - best["runtime"]) if chosen_rt is not None else None
+        pk_regret = (chosen_pk - best_pk["packets"]) if chosen_pk is not None else None
         denom = (worst["runtime"] - best["runtime"]) or 1e-9
         gap = ((worst["runtime"] - chosen_rt) / denom) if chosen_rt is not None else None
         out.append({
@@ -123,10 +151,15 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu"):
             "slot_idx": first["slot_idx"],
             "rho_star": float(rho_star), "tau_star": int(tau_star),
             "pred_runtime": float(pred_rt),
+            "pred_packets": float(pred_pk),
             "best_runtime": float(best["runtime"]),
             "worst_runtime": float(worst["runtime"]),
+            "best_packets": float(best_pk["packets"]),
+            "worst_packets": float(worst_pk["packets"]),
             "chosen_runtime": chosen_rt,
-            "regret": regret, "gap_to_worst": gap,
+            "chosen_packets": chosen_pk,
+            "regret": regret, "packet_regret": pk_regret,
+            "gap_to_worst": gap,
         })
     return out
 
@@ -191,6 +224,16 @@ def _plot_pred_vs_actual(qualities, path):
     save_fig(fig, path)
 
 
+# Selector objective for the multi-output cost-predictor:
+#   'runtime'  -> minimize predicted solve time only
+#   'packets'  -> minimize predicted packet count (max aggregation gain) only
+#   'tradeoff' -> minimize w_runtime*z_rt + w_packets*z_pk (z = training-set
+#                 std units, so the ratio is directly interpretable)
+OBJECTIVE = "tradeoff"
+W_RUNTIME = 1.0
+W_PACKETS = 1.0
+
+
 def run_rho_tau_model():
     """Train (rho, tau_F) cost-predictor and evaluate selector quality."""
     data_path = "plots/param_sweep_data.json"
@@ -219,6 +262,7 @@ def run_rho_tau_model():
         "epochs": epochs, "hidden": hidden, "n_layers": n_layers,
         "dropout": dropout, "lr": lr,
         "val_frac": val_frac, "seed": seed, "test_env": test_env,
+        "objective": OBJECTIVE, "w_runtime": W_RUNTIME, "w_packets": W_PACKETS,
         "device": device or "auto",
     }, axis={"x": "topology", "y_runtime": YLEN_RUNTIME,
              "x_ticks": []})
@@ -247,7 +291,8 @@ def run_rho_tau_model():
         data_path, out_model, out_eval, out_features,
         epochs=epochs, hidden=hidden, n_layers=n_layers,
         dropout=dropout, lr=lr, val_frac=val_frac, seed=seed,
-        test_env=test_env, device=device)
+        test_env=test_env, device=device, objective=OBJECTIVE,
+        w_runtime=W_RUNTIME, w_packets=W_PACKETS)
     train_time = time.time() - train_t0
     print(f"  training done in {train_time:.1f}s")
 
@@ -262,7 +307,10 @@ def run_rho_tau_model():
                                 features_path=out_features,
                                 device=(device or "cpu"))
     qualities = _selector_quality(per_solve_rows, model_pack,
-                                  device=(device or "cpu"))
+                                  device=(device or "cpu"),
+                                  objective=OBJECTIVE,
+                                  w_runtime=W_RUNTIME,
+                                  w_packets=W_PACKETS)
     print(f"  selector evaluated on {len(qualities)} states "
           f"(of {len(per_solve_rows)} per-solve rows)")
     for q in qualities:
@@ -270,7 +318,7 @@ def run_rho_tau_model():
             model="FlexINA-MLP", env=q["env"],
             x=f"ittr={q['ittr']},slot={q['slot_idx']}",
             ittr=int(q["ittr"]),
-            packets=None, runtime=q.get("chosen_runtime"),
+            packets=q.get("chosen_packets"), runtime=q.get("chosen_runtime"),
             construction_time_s=None,
             solve_time_s=q.get("pred_runtime"),
             status=("optimal" if q.get("chosen_runtime") is not None
@@ -293,6 +341,8 @@ def run_rho_tau_model():
 
     regrets = [q["regret"] for q in qualities if q["regret"] is not None]
     gaps = [q["gap_to_worst"] for q in qualities if q["gap_to_worst"] is not None]
+    pk_regrets = [q["packet_regret"] for q in qualities
+                  if q["packet_regret"] is not None]
     summary = {
         "n_states": len(qualities),
         "n_states_with_choice": sum(1 for q in qualities
@@ -302,6 +352,8 @@ def run_rho_tau_model():
         "mean_gap_to_worst": float(np.mean(gaps)) if gaps else None,
         "frac_worst_avoided": (float(np.mean([g > 0.5 for g in gaps]))
                                if gaps else None),
+        "mean_packet_regret": float(np.mean(pk_regrets)) if pk_regrets else None,
+        "std_packet_regret": float(np.std(pk_regrets)) if pk_regrets else None,
         "training_time_s": float(train_time),
         "training_eval": eval_payload,
     }

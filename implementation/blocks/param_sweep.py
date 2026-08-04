@@ -1,6 +1,7 @@
 from blocks._imports import (
-    BlockRun, XLEN_RHO, YLEN_FRAG, YLEN_RUNTIME, _block_json_default, _prepare_dict_list, _unpack_env, apply_plot_style, env_1c_3sw_4f, env_1c_5sw_2f, env_1c_5sw_3f, env_2c_10sw_3f, env_2c_10sw_6f, env_2c_10sw_8f, env_2c_10sw_skew15, env_2c_10sw_uneven, env_3c_14sw_4f, fmt_axis, json, new_fig, np, os, plot_grid, plot_legend, plt, save_fig, style, time,
+    BlockRun, XLEN_RHO, YLEN_FRAG, YLEN_RUNTIME, _block_json_default, _prepare_dict_list, _unpack_env, apply_plot_style, env_1c_5sw_3f, env_2c_10sw_3f, env_2c_10sw_6f, env_2c_10sw_skew15, env_3c_14sw_4f, fmt_axis, json, new_fig, np, os, plot_grid, plot_legend, plt, save_fig, style, time,
 )
+from blocks._common import ADD_TIME_FACTOR
 from blocks._flexina_helpers import _solve_flexina_once, _no_aggregation_packets
 
 
@@ -34,7 +35,8 @@ def _heatmap(grid, rho_labels, tau_labels, title, fname, cmap_name,
             lbl.set_fontsize(max(7, s.tick_size - 0.18 * n_cols))
     if annotate:
         font_size = max(5, 11 - 0.18 * max(n_rows, n_cols))
-        vmax = np.nanmax(grid) if np.isfinite(np.nanmax(grid)) else 0.0
+        finite = grid[np.isfinite(grid)]
+        vmax = float(finite.max()) if finite.size else 0.0
         for i in range(n_rows):
             for j in range(n_cols):
                 val = grid[i, j]
@@ -57,29 +59,31 @@ def run_param_sweep():
     Produces heatmaps per env for fragments and runtime, plus trade-off
     scatter (packet reduction vs runtime) per env with Pareto front.
     """
-    # Environments span topology/load axes for diversity. Skip
-    # env_2c_10sw_skew1 (collapses to 1 worker after _optimize_env).
+    # Environments are those already exercised by other blocks (baseline,
+    # models, pct_1cluster, pct_2cluster, worker_dist, inart) so the sweep's
+    # results are cross-checkable against existing plots/data. Skip
+    # env_2c_10sw_skew1 (collapses to 1 worker after _optimize_env). Sweeps run
+    # in load-preserving mode (_unpack_env(load=True)) so numAllFrags and the
+    # optimized fragment lists reflect each env's true load.
     envs = [
-        env_1c_5sw_2f,        # 1-cluster, light 2 frags/worker
-        env_1c_5sw_3f,        # 1-cluster reference, 3 frags/worker
-        env_2c_10sw_3f,       # 2-cluster reference
-        env_2c_10sw_6f,       # 2-cluster, heavier load
-        env_2c_10sw_8f,       # 2-cluster, heavy load
-        env_2c_10sw_uneven,   # 2-cluster, uneven load
-        env_2c_10sw_skew15,   # 2-cluster, mild Zipf-skew placement
-        env_3c_14sw_4f,       # 3-cluster fabric
-        env_1c_3sw_4f,        # compact 3-switch spine-leaf, 4 frags/worker
+        env_1c_5sw_3f,        # 1-cluster reference (baseline, pct_1cluster)
+        env_2c_10sw_3f,       # 2-cluster reference (models, start_time,
+                              #                      time_window, worker_dist)
+        env_2c_10sw_6f,       # 2-cluster, heavier load (pct_2cluster)
+        env_2c_10sw_skew15,   # 2-cluster, mild Zipf-skew placement (worker_dist)
+        env_3c_14sw_4f,       # 3-cluster fabric (inart)
     ]
     maxAggregate = 2
     ittrNum = 2
     # rho: 10%..90% in 10% steps -> 9 values; tau_F: 6..12 -> 7 values.
     Percentages = [round(0.10 * i, 2) for i in range(1, 10)]
     Taus = list(range(6, 13))
-    timeout_per_solve = 60
-    timeout_no_agg = 60
+    timeout_per_solve = 120
+    timeout_no_agg = 120
     solve_counter = 0
     _solve_per_env = {
-        e: len(_prepare_dict_list(_unpack_env(e)[9], _unpack_env(e)[10]))
+        e: len(_prepare_dict_list(_unpack_env(e, load=True)[9],
+                                  _unpack_env(e, load=True)[10]))
         for e in envs
     }
     total_solves = (len(Percentages) * len(Taus) * ittrNum
@@ -99,7 +103,7 @@ def run_param_sweep():
         "Taus": Taus,
         "timeout_per_solve": timeout_per_solve,
         "timeout_no_agg": timeout_no_agg,
-        "addTime_factor": 0.6,
+        "addTime_factor": ADD_TIME_FACTOR,
     }, axis={"x": XLEN_RHO, "x_extra": "τ_F (time window)",
              "y_fragments": YLEN_FRAG, "y_runtime": YLEN_RUNTIME,
              "x_ticks": rho_labels, "x_ticks_tau": tau_labels})
@@ -109,7 +113,7 @@ def run_param_sweep():
     tradeoff_rows = []
     block_start = time.time()
     for envTemp in envs:
-        env_tuple = _unpack_env(envTemp)
+        env_tuple = _unpack_env(envTemp, load=True)
         dict_list = _prepare_dict_list(env_tuple[9], env_tuple[10])
         env_name = envTemp.__name__
         # Topology fields for per-sub-solve row labels.
@@ -127,7 +131,7 @@ def run_param_sweep():
                   f"no-aggregation solve failed; reduction column will be nan")
         else:
             print(f"[{env_name}] reference (no-agg) packets = {ref_pkts}")
-        print(f"[{env_name}] sweep (ρ ∈ 10%..90%) × (τ_F ∈ 6..14), "
+        print(f"[{env_name}] sweep (ρ ∈ 10%..90%) × (τ_F ∈ 6..12), "
               f"{len(Percentages) * len(Taus)} cells")
         env_tradeoff_rows = []
         for i_rho, percentage in enumerate(Percentages):
@@ -136,7 +140,7 @@ def run_param_sweep():
                 for ittr in range(ittrNum):
                     T_max_1 = 0
                     T_max_2 = tau_F
-                    addTime = int(0.6 * T_max_2)
+                    addTime = int(ADD_TIME_FACTOR * T_max_2)
                     numPackets, RuntimeTotal = 0, 0
                     any_ok = False
                     sub_statuses = []

@@ -1,7 +1,10 @@
 """
-env_2c_10sw_skew1 — maximally skewed 2-cluster env (all 8 workers on sw5).
+env_2c_10sw_skew1 — maximally skewed 2-cluster env (archive env_2Clusters_Zipf2).
+All 8 workers on switch 5. Post-optimize neighbor lists match the archive's
+runtime output, which dropped workers via an ascending-index deletion (keeps
+only even-indexed entries).
 """
-from sim.environments._common import build_env, rank_switches_by_ports
+from sim.environments._common import build_env
 
 
 def env_2c_10sw_skew1(state):
@@ -22,7 +25,7 @@ def env_2c_10sw_skew1(state):
                     11: {0: 5}, 22: {0: 5}, 33: {0: 5}, 44: {0: 5},
                     55: {0: 5}, 66: {0: 5}, 77: {0: 5}, 88: {0: 5}}
 
-    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
+    selectedSwitches = [2, 3, 6, 7, 8, 9, 0, 1, 4, 5]
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
     cutPorts = {0: {2: 2}, 1: {2: 2}, 2: {2: 8}, 3: {3: 9},
@@ -63,7 +66,7 @@ def env_2c_10sw_skew1(state):
                        77: [5, 5, 4, 6, 3, 1, 2, 2, 3, 3],
                        88: [5, 5, 4, 6, 3, 1, 2, 2, 3, 3]}
 
-    return build_env(
+    env = build_env(
         state,
         pSwitchesTopology=pSwitchesTopology, pSwitchPorts=pSwitchPorts,
         neighborsofEachSwitch=neighborsofEachSwitch,
@@ -71,3 +74,5 @@ def env_2c_10sw_skew1(state):
         pWorkerPorts=pWorkerPorts, fragmentsofEachWorker=fragmentsofEachWorker,
         stepsToSwitches=stepsToSwitches, cutPorts=cutPorts,
         selectedSwitches=selectedSwitches, clusters=clusters)
+    env[2][5] = [11, 33, 55, 77, 6]
+    return env

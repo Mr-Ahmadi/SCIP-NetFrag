@@ -1,5 +1,5 @@
 """env_2c_10sw_8f — 2-cluster, 8 frags/worker (heavy load)."""
-from sim.environments._common import build_env, rank_switches_by_ports
+from sim.environments._common import build_env
 
 
 def env_2c_10sw_8f(state):
@@ -20,7 +20,7 @@ def env_2c_10sw_8f(state):
                     11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1},
                     55: {0: 4}, 66: {0: 4}, 77: {0: 5}, 88: {0: 5}}
 
-    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
+    selectedSwitches = [2, 3, 6, 7, 8, 9, 0, 1, 4, 5]
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7]}
 
     cutPorts = {0: {2: 2}, 1: {2: 2}, 2: {2: 8}, 3: {3: 9},

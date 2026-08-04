@@ -22,7 +22,7 @@ def run_pct_2cluster():
         "Percentages": Percentages,
         "T_max_2_init": 6,
         "addTime_factor": 1.0,
-        "timeout_sec": 60,
+        "timeout_sec": 120,
     }, axis={"x": XLEN_RHO, "y_fragments": YLEN_FRAG,
              "y_runtime": YLEN_RUNTIME, "x_ticks": x_labels})
 

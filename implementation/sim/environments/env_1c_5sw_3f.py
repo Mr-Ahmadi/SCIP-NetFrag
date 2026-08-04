@@ -8,7 +8,7 @@ Topology:
 
 Cluster: {0: [0,1,2,3]} — agg switch 4 is not clustered.
 """
-from sim.environments._common import build_env, rank_switches_by_ports
+from sim.environments._common import build_env
 
 
 def env_1c_5sw_3f(state):
@@ -24,7 +24,7 @@ def env_1c_5sw_3f(state):
                     55: {0: 2}, 66: {0: 2}, 77: {0: 3}, 88: {0: 3}}
 
     clusters = {0: [0, 1, 2, 3]}
-    selectedSwitches = rank_switches_by_ports(pSwitchesTopology, pSwitchPorts)
+    selectedSwitches = [2, 3, 4, 0, 1]
     cutPorts = {0: {3: 2}, 1: {2: 3}, 2: {4: 4}, 3: {4: 4}, 4: {4: "PS"},
                 11: {0: 0}, 22: {0: 0}, 33: {0: 1}, 44: {0: 1},
                 55: {0: 2}, 66: {0: 2}, 77: {0: 3}, 88: {0: 3}}

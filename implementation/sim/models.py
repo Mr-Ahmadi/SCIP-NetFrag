@@ -35,16 +35,16 @@ def _compute_allowed_switches(workersTopology, pSwitchesTopology):
 
 def _z_group_infeasible(subSub, target_switch, T_max_1, window_start, frag2worker,
                         stepsToSwitches):
-    """True if some fragment in some group of ``subSub`` cannot physically
-    reach ``target_switch`` by ``window_start`` — i.e. aggregating this
-    partition at that switch during this window is infeasible.
+    """True if some *singleton* (single-fragment) group in ``subSub`` cannot
+    physically reach ``target_switch`` by ``window_start``.
 
-    Checked per atomic fragment (not just singleton groups) since a Z
-    variable combines ALL fragments across ALL groups in the partition into
-    one packet: every one of them must be able to arrive in time.
+    Multi-fragment groups arrive as a pre-aggregated packet (tracked by Y
+    routing), so their individual fragment distances don't determine Z
+    feasibility — only singletons matter, matching the archive logic.
     """
     for group in subSub:
-        for frag in group:
+        if len(group) == 1:
+            frag = next(iter(group))
             worker = frag2worker.get(frag)
             if worker is None or stepsToSwitches[worker][target_switch] + T_max_1 > window_start:
                 return True

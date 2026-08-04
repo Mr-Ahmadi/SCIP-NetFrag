@@ -1,12 +1,24 @@
-"""Inference helper: load the trained cost-predictor and pick (rho, tau_F).
+"""Inference helper: load the trained multi-objective cost-predictor and pick (rho, tau_F).
 
 Usage from another script:
     from blocks.rho_tau.predict import select_rho_tau
-    rho, tau, runtime_pred = select_rho_tau(state)
+    rho, tau, pred_rt, pred_pk = select_rho_tau(state, objective="tradeoff",
+                                                w_runtime=1.0, w_packets=1.0)
 
 `state` keys: num_switches, num_workers, num_all_frags, num_clusters,
-    num_active_frags, num_active_workers, T_max_1, T_max_2,
-    slot_idx, ittr, per_worker_num_frags (optional).
+    num_active_frags, num_active_workers, slot_idx,
+    per_worker_num_frags (optional).
+
+The MLP predicts BOTH objectives (solve runtime and ILP packet count, i.e.
+the primary objective) as standardized log1p targets. The selector minimizes
+``w_runtime * pred_runtime_z + w_packets * pred_packets_z``, so the
+importance ratio w_runtime:w_packets is expressed in training-set std units:
+'packets' objective == fewest packets (max aggregation gain), 'runtime'
+objective == fastest solve.
+
+T_max_1/T_max_2 and ittr are NOT model inputs: the time window is a
+deterministic function of the chosen (slot_idx, tau) and ittr is a pure
+repetition index, so neither adds information the model can use.
 """
 import json
 import os
@@ -64,9 +76,13 @@ def load_model(model_path=DEFAULT_MODEL, features_path=DEFAULT_FEATURES,
     ck = torch.load(model_path, map_location=device, weights_only=False)
     feature_stats = {k: np.array(v, dtype=np.float32)
                      for k, v in ck["feature_stats"].items()}
+    # Detect output width from the final Linear layer so old single-objective
+    # checkpoints (n_out=1) still load; new checkpoints train n_out=2.
+    wkeys = [k for k in ck["state_dict"] if k.endswith(".weight")]
+    n_out = int(ck["state_dict"][wkeys[-1]].shape[0])
     model = CostMLP(in_dim=FEATURE_DIM, hidden=ck.get("hidden", 128),
                     n_layers=ck.get("n_layers", 3),
-                    dropout=ck.get("dropout", 0.1)).to(device)
+                    dropout=ck.get("dropout", 0.1), n_out=n_out).to(device)
     model.load_state_dict(ck["state_dict"])
     model.eval()
     if os.path.exists(features_path):
@@ -76,19 +92,28 @@ def load_model(model_path=DEFAULT_MODEL, features_path=DEFAULT_FEATURES,
         tau_grid = [int(x) for x in fs["tau_grid"]]
     else:
         rho_grid = [round(0.10 * i, 2) for i in range(1, 10)]
-        tau_grid = list(range(6, 15))
+        tau_grid = list(range(6, 13))
     return {
         "model": model, "feature_stats": feature_stats,
         "rho_grid": rho_grid, "tau_grid": tau_grid,
+        "target_stats": ck.get("target_stats"),
         "penalty_runtime": ck.get("penalty_runtime", 30.0),
     }
 
 
 def select_rho_tau(state, model_pack=None, *, device="cpu",
-                   feasibility=None, reduction_floor=None, ref_pkts_by_env=None):
-    """Pick (rho*, tau*) minimizing predicted runtime for `state`.
+                   feasibility=None, reduction_floor=None, ref_pkts_by_env=None,
+                   objective="tradeoff", w_runtime=1.0, w_packets=1.0):
+    """Pick (rho*, tau*) minimizing the weighted objective over the grid.
 
     feasibility: dict[(rho, tau)] -> 0/1; pairs marked 0 are skipped.
+    objective: 'runtime' -> w=(1,0), 'packets' -> w=(0,1),
+               'tradeoff' -> w=(w_runtime, w_packets).
+    The score combines the model's standardized log1p outputs directly:
+        score = w_runtime * z_runtime + w_packets * z_packets
+    so the importance ratio is in training-set std units (weights set as
+    0/1 for the single-objective modes). Returns (rho*, tau*, pred_rt_s,
+    pred_packets). For old n_out=1 checkpoints the score is pred_runtime.
     reduction_floor / ref_pkts_by_env: kept for forward compatibility.
     """
     if model_pack is None:
@@ -99,6 +124,7 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
     tau_grid = model_pack["tau_grid"]
 
     base = _complete_state(state)
+    nw = base["num_workers"] if base["num_workers"] > 0 else 1
     rows = []
     for rho in rho_grid:
         for tau in tau_grid:
@@ -106,7 +132,7 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
             row["rho"] = float(rho)
             row["tau"] = float(tau)
             row["rho_x_active_frags"] = float(rho) * base["num_active_frags"]
-            row["tau_x_workers"] = float(tau) * base["num_workers"]
+            row["tau_x_workers"] = float(tau) * nw
             row["tau_over_frags"] = float(tau) / (base["num_active_frags"] + 1.0)
             rows.append(row)
     df = pd.DataFrame(rows)
@@ -118,18 +144,39 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
             df[f"whist_{i}"] = 0.0
     X, _ = build_feature_matrix(df, feature_stats=feature_stats)
     with torch.no_grad():
-        Xt = torch.tensor(X, device=device)
-        pred_log = model(Xt).cpu().numpy()
-    pred_log = np.clip(pred_log, -5.0, 5.0)   # expm1(5) ~ 147s, plenty of headroom
-    pred_rt = np.expm1(pred_log)
+        pred_z = model(torch.tensor(X, device=device)).cpu().numpy()
+    pred_z = np.clip(pred_z, -6.0, 6.0)   # 6 sigma, plenty of headroom
+
+    ts = model_pack.get("target_stats") or {}
+    mu_rt, sd_rt = ts.get("runtime", (0.0, 1.0))
+    pred_rt = np.expm1(np.clip(pred_z[:, 0] * sd_rt + mu_rt, -5.0, 8.0))
     pred_rt = np.maximum(pred_rt, 0.0)
+    if pred_z.shape[1] >= 2:
+        mu_pk, sd_pk = ts.get("packets", (0.0, 1.0))
+        pred_pk = np.expm1(np.clip(pred_z[:, 1] * sd_pk + mu_pk, -5.0, 12.0))
+        pred_pk = np.maximum(pred_pk, 0.0)
+    else:
+        pred_pk = np.zeros_like(pred_rt)
+
+    if pred_z.shape[1] >= 2:
+        if objective == "runtime":
+            w_rt, w_pk = 1.0, 0.0
+        elif objective == "packets":
+            w_rt, w_pk = 0.0, 1.0
+        else:  # tradeoff
+            w_rt, w_pk = w_runtime, w_packets
+        if w_rt == 0.0 and w_pk == 0.0:
+            w_rt, w_pk = 1.0, 0.0
+        score = w_rt * pred_z[:, 0] + w_pk * pred_z[:, 1]
+    else:
+        score = pred_rt.copy()
     if feasibility is not None:
         for i, (rho, tau) in enumerate(zip(df["rho"], df["tau"])):
             if not feasibility.get((float(rho), int(tau)), 1):
-                pred_rt[i] = np.inf
-    best = int(np.argmin(pred_rt))
+                score[i] = np.inf
+    best = int(np.argmin(score))
     return (float(df["rho"].iloc[best]), int(df["tau"].iloc[best]),
-            float(pred_rt[best]))
+            float(pred_rt[best]), float(pred_pk[best]))
 
 
 if __name__ == "__main__":
@@ -143,12 +190,13 @@ if __name__ == "__main__":
     p.add_argument("--num_clusters", type=float, default=1)
     p.add_argument("--num_active_frags", type=float, default=4)
     p.add_argument("--num_active_workers", type=float, default=4)
-    p.add_argument("--T_max_1", type=float, default=0)
-    p.add_argument("--T_max_2", type=float, default=8)
     p.add_argument("--slot_idx", type=int, default=0)
-    p.add_argument("--ittr", type=int, default=0)
     p.add_argument("--per_worker_num_frags", default="",
                    help='JSON dict like {"11":1,"33":1,"55":1,"77":1}')
+    p.add_argument("--objective", default="tradeoff",
+                   choices=["runtime", "packets", "tradeoff"])
+    p.add_argument("--w_runtime", type=float, default=1.0)
+    p.add_argument("--w_packets", type=float, default=1.0)
     args = p.parse_args()
 
     state = {
@@ -158,13 +206,15 @@ if __name__ == "__main__":
         "num_clusters": args.num_clusters,
         "num_active_frags": args.num_active_frags,
         "num_active_workers": args.num_active_workers,
-        "T_max_1": args.T_max_1,
-        "T_max_2": args.T_max_2,
         "slot_idx": args.slot_idx,
-        "ittr": args.ittr,
     }
     if args.per_worker_num_frags:
         state["per_worker_num_frags"] = json.loads(args.per_worker_num_frags)
 
-    rho, tau, rt = select_rho_tau(state)
-    print(f"Selected: rho={rho:.2f}  tau_F={tau}  predicted_runtime={rt:.4f}s")
+    model_pack = load_model(model_path=args.model, features_path=args.features)
+    rho, tau, pred_rt, pred_pk = select_rho_tau(
+        state, model_pack=model_pack, objective=args.objective,
+        w_runtime=args.w_runtime, w_packets=args.w_packets)
+    print(f"Selected: rho={rho:.2f}  tau_F={tau}  "
+          f"predicted_runtime={pred_rt:.4f}s  predicted_packets={pred_pk:.2f}  "
+          f"(objective={args.objective}, w_rt={args.w_runtime}, w_pk={args.w_packets})")

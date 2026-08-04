@@ -2,7 +2,6 @@
 from blocks._common import BLOCKS, _prompt_block
 from blocks.baseline import run_baseline
 from blocks.models import run_models
-from blocks.models_sparse import run_models_sparse
 from blocks.pct_2cluster import run_pct_2cluster
 from blocks.pct_1cluster import run_pct_1cluster
 from blocks.start_time import run_start_time
@@ -18,7 +17,6 @@ run_tradeoff = run_param_sweep
 BLOCK_RUNNERS = {
     "baseline":       run_baseline,
     "models":         run_models,
-    "models_sparse":  run_models_sparse,
     "pct_2cluster":   run_pct_2cluster,
     "pct_1cluster":   run_pct_1cluster,
     "start_time":     run_start_time,
@@ -31,7 +29,7 @@ BLOCK_RUNNERS = {
 
 __all__ = [
     "BLOCKS", "_prompt_block", "BLOCK_RUNNERS",
-    "run_baseline", "run_models", "run_models_sparse",
+    "run_baseline", "run_models",
     "run_pct_2cluster", "run_pct_1cluster",
     "run_start_time", "run_time_window", "run_worker_dist",
     "run_inart_comparison", "run_param_sweep", "run_tradeoff",

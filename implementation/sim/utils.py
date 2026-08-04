@@ -82,7 +82,7 @@ def create_Fragments(fragmentsofEachWorker, T_max_1, T_max_2, maxAggregation):
     allofSubsets = [get_subsets(f) for f in fragments]
     times = list(range(T_max_1, T_max_2))
     # Per JINA (Eqs. 3-4), a Z window ranges freely over the per-fragment horizon.
-    usefulIntervalTime = [sorted(interval) for interval in combinations(times, 2)]
+    usefulIntervalTime = [sorted(interval) for interval in combinations(times, 2) if abs(interval[1] - interval[0]) <= maxAggregation]
     subSets = [[sub for sub in subsets_of_subsets(subset)]
                for subset_list in allofSubsets for subset in subset_list]
     return subSets, allofSubsets, usefulIntervalTime, fragments

@@ -21,10 +21,7 @@ NUMERIC_FEATURES = [
     "num_clusters",
     "num_active_frags",
     "num_active_workers",
-    "T_max_1",
-    "T_max_2",
     "slot_idx",
-    "ittr",
     # engineered cross terms for faster convergence
     "rho_x_active_frags",   # rho * num_active_frags
     "tau_x_workers",        # tau * num_workers
@@ -32,6 +29,16 @@ NUMERIC_FEATURES = [
     "active_ratio",         # num_active_workers / num_workers
     "load_entropy",         # entropy of per-worker fragment distribution
 ]
+
+# Deliberately NOT features:
+#   T_max_1 / T_max_2  — deterministic functions of (slot_idx, tau), which are
+#                        already inputs (T_max_1 = slot_idx*int(0.6*tau),
+#                        T_max_2 = tau + slot_idx*int(0.6*tau)).
+#   ittr               — pure repetition index: each ittr re-solves the same
+#                        (env, slot, load) with the same windows, so it carries
+#                        no causal information (only SCIP timing noise).
+# `ittr` is kept as a row column / grouping key so the selector evaluation can
+# report per-iteration regret samples, but it is not fed to the model.
 
 # Per-worker histogram bins (capped for unseen topologies).
 WORKER_HIST_BINS = 8
@@ -74,8 +81,6 @@ def rows_to_dataframe(per_solve_rows):
             "num_clusters": r["num_clusters"],
             "num_active_frags": naf,
             "num_active_workers": naw,
-            "T_max_1": r["T_max_1"],
-            "T_max_2": r["T_max_2"],
             "slot_idx": r["slot_idx"],
             "ittr": r["ittr"],
             "rho_x_active_frags": r["rho"] * naf,
@@ -112,38 +117,83 @@ def build_feature_matrix(df, feature_stats=None, fit_stats=False):
 
 
 class CostMLP(nn.Module):
-    def __init__(self, in_dim=FEATURE_DIM, hidden=128, n_layers=3, dropout=0.1):
+    """Multi-output cost predictor: (pred_runtime, pred_packets).
+
+    Outputs standardized log1p targets (see ``_targets`` / ``_zscore_targets``),
+    so combining them as ``w_rt * out[:,0] + w_pk * out[:,1]`` is a
+    scale-free trade-off where each weight is "one training-set std of that
+    objective". ``n_out=1`` keeps old single-objective checkpoints loadable.
+    """
+    def __init__(self, in_dim=FEATURE_DIM, hidden=128, n_layers=3, dropout=0.1,
+                 n_out=2):
         super().__init__()
         layers = []
         d = in_dim
         for _ in range(n_layers):
             layers += [nn.Linear(d, hidden), nn.GELU(), nn.Dropout(dropout)]
             d = hidden
-        layers += [nn.Linear(d, 1)]
+        layers += [nn.Linear(d, n_out)]
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.net(x).squeeze(-1)
+        return self.net(x)
 
 
-def _runtime_target(df):
-    """Runtime target with penalty for non-optimal solves."""
-    ok = df.loc[df["status"] == "optimal", "runtime"].values
-    if ok.size == 0:
-        penalty_floor = 30.0
+def _targets(df):
+    """Targets with penalty for non-optimal solves.
+
+    Returns (y_runtime, y_packets, penalty_runtime, penalty_packets).
+    Non-optimal rows (timelimit/best-effort) are floored on BOTH axes so the
+    model learns to avoid those (rho, tau) regions no matter which objective
+    the user weighs — the runtime head alone could otherwise be outweighed
+    when packets are weighted heavily.
+    """
+    ok_rt = df.loc[df["status"] == "optimal", "runtime"].values
+    if ok_rt.size == 0:
+        penalty_rt = 30.0
     else:
-        from numpy import percentile
-        penalty_floor = max(30.0, float(np.percentile(ok, 95)) + 5.0)
-    y = df["runtime"].astype(float).values.copy()
-    penalties = df["status"].values.copy()
-    y = np.where(penalties == "optimal", y, penalty_floor).astype(np.float32)
-    return y, float(penalty_floor)
+        penalty_rt = max(30.0, float(np.percentile(ok_rt, 95)) + 5.0)
+    ok_pk = df.loc[df["status"] == "optimal", "packets"].values
+    if ok_pk.size == 0:
+        penalty_pk = 30.0
+    else:
+        penalty_pk = max(1.0, float(np.percentile(ok_pk, 95)) + 5.0)
+    penalties = (df["status"].values != "optimal")
+    y_rt = np.where(penalties, penalty_rt, df["runtime"].astype(float).values)
+    y_pk = np.where(penalties, penalty_pk, df["packets"].astype(float).values)
+    return (y_rt.astype(np.float32), y_pk.astype(np.float32),
+            float(penalty_rt), float(penalty_pk))
+
+
+def _zscore_targets(y_tr_rt, y_tr_pk, y_val_rt, y_val_pk):
+    """Z-score log1p targets on the TRAIN split; reuse stats for val/inference.
+
+    Returns (Y_tr, Y_val, target_stats) where target_stats maps each output
+    name to [mu, sigma] of its log1p space.
+    """
+    l_tr = np.stack([np.log1p(y_tr_rt), np.log1p(y_tr_pk)], axis=1)
+    l_val = np.stack([np.log1p(y_val_rt), np.log1p(y_val_pk)], axis=1)
+    mu = l_tr.mean(axis=0)
+    sd = l_tr.std(axis=0)
+    sd[sd < 1e-6] = 1.0
+    target_stats = {"runtime": (float(mu[0]), float(sd[0])),
+                    "packets": (float(mu[1]), float(sd[1]))}
+    Y_tr = ((l_tr - mu) / sd).astype(np.float32)
+    Y_val = ((l_val - mu) / sd).astype(np.float32)
+    return Y_tr, Y_val, target_stats
 
 
 def train(X_tr, y_tr, X_val, y_val, *, hidden=128, n_layers=3, dropout=0.1,
           epochs=200, lr=1e-3, weight_decay=1e-4, patience=30, device="cpu"):
+    """Train the multi-output MLP.
+
+    ``y_tr``/``y_val`` are (n, 2) matrices of standardized log1p targets
+    (runtime, packets). HuberLoss over the whole matrix = equal weight on
+    each objective.
+    """
     model = CostMLP(in_dim=X_tr.shape[1], hidden=hidden,
-                    n_layers=n_layers, dropout=dropout).to(device)
+                    n_layers=n_layers, dropout=dropout,
+                    n_out=y_tr.shape[1]).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
         opt, mode="min", factor=0.5, patience=10, min_lr=1e-5)
@@ -186,56 +236,46 @@ def train(X_tr, y_tr, X_val, y_val, *, hidden=128, n_layers=3, dropout=0.1,
     return model, best_val
 
 
-def make_selector(model, feature_stats, df_full, rho_grid, tau_grid, device):
-    """Return a function state_dict -> (rho*, tau*, predicted_runtime)."""
-    feasible = df_full.groupby(["rho", "tau"])["status"].apply(
-        lambda s: int((s == "optimal").any())).to_dict()
+def evaluate_selector(model_pack, df_eval, *, device="cpu",
+                      objective="tradeoff", w_runtime=1.0, w_packets=1.0):
+    """Evaluate selector quality: compare chosen (rho, tau) with oracle.
 
-    def select(state, forbidden=None):
-        rows = []
-        for rho in rho_grid:
-            for tau in tau_grid:
-                if forbidden and (rho, tau) in forbidden:
-                    continue
-                row = dict(state)
-                row["rho"] = rho
-                row["tau"] = tau
-                rows.append(row)
-        df = pd.DataFrame(rows)
-        for c in NUMERIC_FEATURES:
-            if c not in df.columns:
-                df[c] = 0.0
-        X, _ = build_feature_matrix(df, feature_stats=feature_stats)
-        model.eval()
-        with torch.no_grad():
-            Xt = torch.tensor(X, device=device)
-            pred = model(Xt).cpu().numpy()
-        for i, (rho, tau) in enumerate(zip(df["rho"], df["tau"])):
-            if not feasible.get((rho, tau), 1):
-                pred[i] = np.inf
-        best = int(np.argmin(pred))
-        return float(df["rho"].iloc[best]), int(df["tau"].iloc[best]), float(pred[best])
-
-    return select
-
-
-def evaluate_selector(select, df_eval):
-    """Evaluate selector quality: compare chosen (rho, tau) with oracle."""
-    state_cols = ["env", "ittr", "slot_idx", "T_max_1", "T_max_2",
+    Mirrors blocks.rho_tau.block._selector_quality: per-state feasibility
+    (pairs that solved optimally for THIS state) and a direct call to
+    predict.select_rho_tau, so the train-time and block-time selector paths
+    are identical. objective/weights must match what the block will use.
+    """
+    from blocks.rho_tau import predict as prd
+    # T_max_1/T_max_2 are deterministic functions of (slot_idx, tau) and ittr
+    # is a pure repetition index — none are model inputs. `ittr` stays as a
+    # grouping key only, giving one regret sample per iteration.
+    state_cols = ["env", "ittr", "slot_idx",
                   "num_active_frags", "num_active_workers"]
     groups = df_eval.groupby(state_cols, sort=False)
     rows = []
     for key, g in groups:
         state = {c: g[c].iloc[0] for c in NUMERIC_FEATURES
                  if c not in ("rho", "tau")}
-        state.update({c: g[c].iloc[0] for c in
-                      ["num_switches", "num_workers", "num_all_frags",
-                       "num_clusters", "slot_idx", "ittr", "T_max_1", "T_max_2"]})
         for i in range(WORKER_HIST_BINS):
             state[f"whist_{i}"] = g[f"whist_{i}"].iloc[0]
-        rho_star, tau_star, _ = select(state)
+        # Per-slot load is one fragment per active worker, so a uniform
+        # per-worker dict reproduces the load_entropy/histogram features the
+        # training rows were built from.
+        state["per_worker_num_frags"] = {
+            str(i): 1 for i in range(int(g["num_active_workers"].iloc[0]))}
+        # Mark every grid pair explicitly (missing keys would otherwise default
+        # to "feasible" in select_rho_tau) — mirrors _selector_quality exactly.
+        feas = {(float(r), int(t)): 0
+                for r in model_pack["rho_grid"]
+                for t in model_pack["tau_grid"]}
+        for r, t, s in zip(g["rho"], g["tau"], g["status"]):
+            if s == "optimal":
+                feas[(float(r), int(t))] = 1
+        rho_star, tau_star, _, _ = prd.select_rho_tau(
+            state, model_pack=model_pack, device=device, feasibility=feas,
+            objective=objective, w_runtime=w_runtime, w_packets=w_packets)
         chosen = g[(g["rho"] == rho_star) & (g["tau"] == tau_star)]
-        if chosen.empty:
+        if chosen.empty or chosen["status"].iloc[0] != "optimal":
             continue
         chosen_rt = float(chosen["runtime"].iloc[0])
         chosen_pk = float(chosen["packets"].iloc[0])
@@ -252,6 +292,7 @@ def evaluate_selector(select, df_eval):
             "best_runtime": best_rt, "worst_runtime": worst_rt,
             "chosen_packets": chosen_pk, "best_packets": best_pk,
             "regret": chosen_rt - best_rt,
+            "packet_regret": chosen_pk - best_pk,
             "gap_to_worst": (worst_rt - chosen_rt) / max(1e-9, worst_rt - best_rt),
         })
     if not rows:
@@ -264,6 +305,7 @@ def evaluate_selector(select, df_eval):
         "mean_regret_s": float(r["regret"].mean()),
         "mean_packets": float(r["chosen_packets"].mean()),
         "oracle_mean_packets": float(r["best_packets"].mean()),
+        "mean_packet_regret": float(r["packet_regret"].mean()),
         "frac_worst_avoided": float((r["gap_to_worst"] > 0.5).mean()),
     }
 
@@ -284,6 +326,13 @@ def main():
     p.add_argument("--n_layers", type=int, default=3)
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--objective", default="tradeoff",
+                   choices=["runtime", "packets", "tradeoff"],
+                   help="Selector objective: runtime / packets / tradeoff.")
+    p.add_argument("--w_runtime", type=float, default=1.0,
+                   help="Importance of runtime in 'tradeoff' (z-score units).")
+    p.add_argument("--w_packets", type=float, default=1.0,
+                   help="Importance of packets in 'tradeoff' (z-score units).")
     p.add_argument("--device", default=None)
     args = p.parse_args()
 
@@ -305,9 +354,11 @@ def main():
           dict(Counter(r["env"] for r in rows)))
 
     df = rows_to_dataframe(rows)
-    y, penalty = _runtime_target(df)
-    print(f"Penalty runtime for non-optimal solves: {penalty:.2f}s "
+    y_rt, y_pk, penalty_rt, penalty_pk = _targets(df)
+    print(f"Penalty runtime for non-optimal solves: {penalty_rt:.2f}s "
           f"(rows penalized: {(df['status']!='optimal').sum()})")
+    print(f"Penalty packets for non-optimal solves: {penalty_pk:.2f} "
+          f"(same {int((df['status']!='optimal').sum())} rows)")
 
     if args.test_env:
         test_env = args.test_env
@@ -330,18 +381,16 @@ def main():
 
     X_tr_raw, feature_stats = build_feature_matrix(tr_df, fit_stats=True)
     X_val_raw, _ = build_feature_matrix(val_df, feature_stats=feature_stats)
-    y_tr = y[tr_df.index.values]
-    y_val = y[val_df.index.values]
-
-    # log-transform runtime: its distribution spans 0.01s .. 30s+, so
-    # predicting log(runtime) is much better conditioned for an MLP.
-    y_tr_log = np.log1p(y_tr).astype(np.float32)
-    y_val_log = np.log1p(y_val).astype(np.float32)
+    y_tr, y_val, target_stats = _zscore_targets(
+        y_rt[tr_df.index.values], y_pk[tr_df.index.values],
+        y_rt[val_df.index.values], y_pk[val_df.index.values])
+    print(f"Target z-score stats (log1p): runtime mu/sd="
+          f"{target_stats['runtime']}, packets mu/sd={target_stats['packets']}")
 
     print(f"Training MLP (in_dim={X_tr_raw.shape[1]}, hidden={args.hidden}, "
           f"layers={args.n_layers}) on {device} ...")
     model, best_val = train(
-        X_tr_raw, y_tr_log, X_val_raw, y_val_log,
+        X_tr_raw, y_tr, X_val_raw, y_val,
         hidden=args.hidden, n_layers=args.n_layers, dropout=args.dropout,
         epochs=args.epochs, lr=args.lr, device=device)
 
@@ -352,7 +401,10 @@ def main():
         "worker_hist_bins": WORKER_HIST_BINS,
         "hidden": args.hidden, "n_layers": args.n_layers,
         "dropout": args.dropout,
-        "penalty_runtime": penalty,
+        "n_out": y_tr.shape[1],
+        "target_stats": target_stats,
+        "penalty_runtime": penalty_rt,
+        "penalty_packets": penalty_pk,
     }, args.out_model)
     print(f"Saved model -> {args.out_model}")
 
@@ -362,23 +414,36 @@ def main():
     tau_grid = [int(x) for x in tau_grid]
     print(f"Selector grid: rho={rho_grid}, tau={tau_grid}")
 
+    model_pack = {
+        "model": model,
+        "feature_stats": feature_stats,
+        "rho_grid": rho_grid,
+        "tau_grid": tau_grid,
+    }
+
     eval_report = {"best_val_loss_log1p": best_val,
                    "val_mae_log1p": float(
                        (model(torch.tensor(X_val_raw, device=device))
-                        - torch.tensor(y_val_log, device=device)).abs().mean())}
-
-    select = make_selector(model, feature_stats, df, rho_grid, tau_grid, device)
+                        - torch.tensor(y_val, device=device)).abs().mean().detach())}
 
     eval_on = pd.concat([tr_df, val_df])
-    sel_tr = evaluate_selector(select, eval_on)
+    sel_tr = evaluate_selector(model_pack, eval_on, device=device,
+                               objective=args.objective,
+                               w_runtime=args.w_runtime,
+                               w_packets=args.w_packets)
     if sel_tr is not None:
-        print("\nSelector quality on train+val states:")
+        print(f"\nSelector quality on train+val states "
+              f"(objective={args.objective}, w_rt={args.w_runtime}, "
+              f"w_pk={args.w_packets}):")
         for k, v in sel_tr.items():
             print(f"  {k}: {v}")
         eval_report["selector_trainval"] = sel_tr
 
     if test_df is not None:
-        sel_te = evaluate_selector(select, test_df)
+        sel_te = evaluate_selector(model_pack, test_df, device=device,
+                                   objective=args.objective,
+                                   w_runtime=args.w_runtime,
+                                   w_packets=args.w_packets)
         if sel_te is not None:
             print(f"\nSelector quality on held-out env ({test_env}):")
             for k, v in sel_te.items():
@@ -395,6 +460,10 @@ def main():
             "worker_hist_bins": WORKER_HIST_BINS,
             "rho_grid": [float(x) for x in rho_grid],
             "tau_grid": [int(x) for x in tau_grid],
+            "target_stats": {k: list(v) for k, v in target_stats.items()},
+            "objective": args.objective,
+            "w_runtime": args.w_runtime,
+            "w_packets": args.w_packets,
         }, f, indent=2)
     print(f"Saved features spec -> {args.out_features}")
 

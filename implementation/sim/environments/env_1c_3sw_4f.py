@@ -37,8 +37,10 @@ def env_1c_3sw_4f(state):
                              33: ["A2", "B2", "C2", "D2"],
                              44: ["A3", "B3", "C3", "D3"]}
 
-    stepsToSwitches = {11: [1, 3, 2, 2, 3], 22: [1, 3, 2, 2, 3],
-                       33: [3, 1, 2, 2, 3], 44: [3, 1, 2, 2, 3]}
+    # Hops from each worker to each switch, indexed by switch id; a worker's
+    # own ToR is 1. Switches 0 and 1 are directly linked, so the far ToR is 2.
+    stepsToSwitches = {11: [1, 2, 2], 22: [1, 2, 2],
+                       33: [2, 1, 2], 44: [2, 1, 2]}
 
     return build_env(
         state,

@@ -6,8 +6,8 @@ from blocks._imports import (
     LEGEND_SIZE, XLEN_TOPOLOGY, YLEN_FRAG, YLEN_RUNTIME, env_labels,
     _prepare_dict_list, _unpack_env, apply_constraints,
     apply_constraints_InArt, apply_plot_style,
-    env_1c_5sw_3f, env_2c_10sw_3f, env_2c_10sw_uneven, env_3c_14sw_4f,
-    fmt_axis, new_fig, np, plot_errorbar, plot_grid,
+    env_2c_10sw_3f, env_2c_10sw_uneven, env_3c_14sw_4f,
+    env_2c_10sw_skew15, fmt_axis, new_fig, np, plot_errorbar, plot_grid,
     plot_grouped_bars, plot_legend, plt,
     save_fig, style, time,
 )
@@ -25,9 +25,9 @@ def run_inart_comparison():
     InArt vs FlexINA across multiple topologies.
     """
     envs = [
-        env_1c_5sw_3f,
         env_2c_10sw_3f,
         env_2c_10sw_uneven,
+        env_2c_10sw_skew15,
         env_3c_14sw_4f,
     ]
     x_labels = env_labels(envs)
@@ -35,14 +35,19 @@ def run_inart_comparison():
     # maxAggregation=3: at max-agg 2, InArt and FlexINA land on the same
     # packet count for these envs. At max-agg 3, chained solutions are
     # strictly better — this is the comparison this block exists to show.
+    # Envs are chosen from those other blocks already solve to proven
+    # optimality without a time limit (env_2c_10sw_3f/uneven/skew15 from
+    # models/worker_dist, env_3c_14sw_4f from param_sweep); env_1c_5sw_3f
+    # was dropped because FlexINA's first slot there previously hit the
+    # per-solve time limit in inart_data.json.
     MAX_AGGREGATION = 3
     ittrNum = 3
     # Equal ρ for both — same candidate-switch set.
     percentage = 0.5
-    SOLVE_TIMEOUT_S = 60
+    SOLVE_TIMEOUT_S = 120
     ADD_TIME_FACTOR = 1.0
     solve_counter = 0
-    total_solves = (len(MODEL_VARIANTS) * len(envs) * ittrNum
+    total_solves = (len(MODEL_VARIANTS) * ittrNum
                     * sum(len(_prepare_dict_list(*_unpack_env(e)[9:11]))
                           for e in envs))
 
