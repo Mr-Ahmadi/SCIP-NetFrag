@@ -59,19 +59,14 @@ def run_param_sweep():
     Produces heatmaps per env for fragments and runtime, plus trade-off
     scatter (packet reduction vs runtime) per env with Pareto front.
     """
-    # Environments are those already exercised by other blocks (baseline,
-    # models, pct_1cluster, pct_2cluster, worker_dist, inart) so the sweep's
-    # results are cross-checkable against existing plots/data. Skip
-    # env_2c_10sw_skew1 (collapses to 1 worker after _optimize_env). Sweeps run
-    # in load-preserving mode (_unpack_env(load=True)) so numAllFrags and the
-    # optimized fragment lists reflect each env's true load.
+    # Envs already exercised by other blocks for cross-checking. Load-preserving
+    # mode keeps each env's true fragment counts.
     envs = [
-        env_1c_5sw_3f,        # 1-cluster reference (baseline, pct_1cluster)
-        env_2c_10sw_3f,       # 2-cluster reference (models, start_time,
-                              #                      time_window, worker_dist)
-        env_2c_10sw_6f,       # 2-cluster, heavier load (pct_2cluster)
-        env_2c_10sw_skew15,   # 2-cluster, mild Zipf-skew placement (worker_dist)
-        env_3c_14sw_4f,       # 3-cluster fabric (inart)
+        env_1c_5sw_3f,        # 1-cluster reference
+        env_2c_10sw_3f,       # 2-cluster reference
+        env_2c_10sw_6f,       # heavier load
+        env_2c_10sw_skew15,   # mild Zipf-skew placement
+        env_3c_14sw_4f,       # 3-cluster fabric
     ]
     maxAggregate = 2
     ittrNum = 2
@@ -116,7 +111,7 @@ def run_param_sweep():
         env_tuple = _unpack_env(envTemp, load=True)
         dict_list = _prepare_dict_list(env_tuple[9], env_tuple[10])
         env_name = envTemp.__name__
-        # Topology fields for per-sub-solve row labels.
+        # Topology fields for per-solve row labels.
         (_, _, _, pSwitchesNumber, _,
          _, _, workersNumber, numAllFrags,
          _, _, _, _, _, clusters) = env_tuple

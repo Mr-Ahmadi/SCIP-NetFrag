@@ -107,14 +107,9 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
     """Pick (rho*, tau*) minimizing the weighted objective over the grid.
 
     feasibility: dict[(rho, tau)] -> 0/1; pairs marked 0 are skipped.
-    objective: 'runtime' -> w=(1,0), 'packets' -> w=(0,1),
-               'tradeoff' -> w=(w_runtime, w_packets).
-    The score combines the model's standardized log1p outputs directly:
-        score = w_runtime * z_runtime + w_packets * z_packets
-    so the importance ratio is in training-set std units (weights set as
-    0/1 for the single-objective modes). Returns (rho*, tau*, pred_rt_s,
-    pred_packets). For old n_out=1 checkpoints the score is pred_runtime.
-    reduction_floor / ref_pkts_by_env: kept for forward compatibility.
+    score = w_runtime*z_runtime + w_packets*z_packets over standardized log1p
+    outputs; single-objective modes use w=(1,0)/(0,1). Returns (rho*, tau*,
+    pred_rt_s, pred_packets); old n_out=1 checkpoints score on runtime only.
     """
     if model_pack is None:
         model_pack = load_model(device=device)

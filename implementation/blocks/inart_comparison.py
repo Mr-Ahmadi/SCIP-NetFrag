@@ -32,14 +32,9 @@ def run_inart_comparison():
     ]
     x_labels = env_labels(envs)
 
-    # maxAggregation=3: at max-agg 2, InArt and FlexINA land on the same
-    # packet count for these envs. At max-agg 3, chained solutions are
-    # strictly better — this is the comparison this block exists to show.
-    # Envs are chosen from those other blocks already solve to proven
-    # optimality without a time limit (env_2c_10sw_3f/uneven/skew15 from
-    # models/worker_dist, env_3c_14sw_4f from param_sweep); env_1c_5sw_3f
-    # was dropped because FlexINA's first slot there previously hit the
-    # per-solve time limit in inart_data.json.
+    # max-agg 2 ties both models on these envs; max-agg 3 is where chaining
+    # separates them. Envs chosen for proven optimality without time limits
+    # (env_1c_5sw_3f was dropped: its first slot hit the per-solve limit).
     MAX_AGGREGATION = 3
     ittrNum = 3
     # Equal ρ for both — same candidate-switch set.
@@ -84,15 +79,13 @@ def run_inart_comparison():
 
             dict_list = _prepare_dict_list(fragmentsofEachWorker, totalWorkers)
             x_label = env_labels([envTemp])[0]
-            # Accumulated across ALL ittrs for this env (NOT reset per-ittr).
             avgPacket = []
             avgRuntime = []
             for ittr in range(ittrNum):
                 T_max_1 = 0
                 T_max_2 = 8
                 addTime = int(ADD_TIME_FACTOR * T_max_2)
-                # Carried across dict_list items within this ittr
-                # (FlexINA Phase 3 — see main.pdf Algorithm 1).
+                # Carried across dict_list items within this ittr (FlexINA Phase 3).
                 Y_Used, Z_Used = set(), set()
                 numPackets = 0
                 RuntimeTotal = 0
@@ -152,7 +145,6 @@ def run_inart_comparison():
 
         print(f"  done in {time.time() - block_start:.1f}s")
 
-    # All sub-solves complete.
     print(f"\n>>> All {total_solves} sub-solves complete "
           f"(solve_counter={solve_counter}). Block finished in "
           f"{time.time() - block_start:.1f}s — proceeding to plots.")

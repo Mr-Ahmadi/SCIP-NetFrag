@@ -67,13 +67,9 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
     if not per_solve_rows:
         return []
 
-    # Group per-solve rows by the state observable before choosing (rho, tau).
-    # T_max_1/T_max_2 are NOT part of the state (deterministic of the chosen
-    # tau/slot — including them would freeze each group to a single tau and
-    # turn the (rho, tau) selector into a rho-only one). ittr is a pure
-    # repetition index, so it is not a model feature either, but it IS a
-    # grouping key so each iteration yields an independent regret sample
-    # instead of being averaged away.
+    # Group by observable pre-choice state. T_max_1/T_max_2 are deterministic
+    # of tau; ittr stays a grouping key so each repetition is an independent
+    # regret sample.
     state_cols = ["env", "ittr", "slot_idx",
                   "num_active_frags", "num_active_workers"]
     buckets = {}
@@ -92,7 +88,7 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
         best_pk = min(ok, key=lambda r: r["packets"])
         worst_pk = max(ok, key=lambda r: r["packets"])
 
-        # Build inference state dict from first row of the group.
+        # State from the first row of the group.
         first = rs[0]
         state = {
             "env": first["env"],
@@ -107,9 +103,7 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
         }
         try:
             from blocks.rho_tau import predict as prd
-            # A (rho, tau) pair is selectable for this state only if it ever
-            # solved optimally here. Explicitly mark every grid pair (missing
-            # keys would otherwise default to "feasible" in select_rho_tau).
+            # Mark every grid pair; a pair is feasible only if it solved optimally.
             feas = {(float(r), int(t)): 0
                     for r in model_pack["rho_grid"]
                     for t in model_pack["tau_grid"]}
@@ -136,7 +130,7 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
             })
             continue
 
-        # Look up actual runtime for the selected (rho, tau) pair.
+        # Actual runtime for the selected (rho, tau) pair.
         chosen = next((r for r in rs
                        if abs(r["rho"] - rho_star) < 1e-9
                        and r["tau"] == tau_star), None)

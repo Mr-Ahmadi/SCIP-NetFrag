@@ -34,12 +34,8 @@ def _unpack_env(envTemp, load=False):
     return envTemp(state='OptimazeLoad' if load else 'Optimaze')
 
 
-# FlexINA per-slot window factor used by param_sweep (`addTime =
-# int(ADD_TIME_FACTOR * tau_F)`). Single source of truth shared with the other
-# addTime_factor == 0.6 blocks (start_time). The (rho, tau_F) cost-predictor
-# does NOT take the resulting T_max_1/T_max_2 as features — they are a
-# deterministic function of (slot_idx, tau) — so only param_sweep consumes
-# this constant.
+# FlexINA per-slot window factor (param_sweep addTime = ADD_TIME_FACTOR * tau_F);
+# shared with the other 0.6-factor blocks (start_time).
 ADD_TIME_FACTOR = 0.6
 
 

@@ -30,15 +30,9 @@ NUMERIC_FEATURES = [
     "load_entropy",         # entropy of per-worker fragment distribution
 ]
 
-# Deliberately NOT features:
-#   T_max_1 / T_max_2  — deterministic functions of (slot_idx, tau), which are
-#                        already inputs (T_max_1 = slot_idx*int(0.6*tau),
-#                        T_max_2 = tau + slot_idx*int(0.6*tau)).
-#   ittr               — pure repetition index: each ittr re-solves the same
-#                        (env, slot, load) with the same windows, so it carries
-#                        no causal information (only SCIP timing noise).
-# `ittr` is kept as a row column / grouping key so the selector evaluation can
-# report per-iteration regret samples, but it is not fed to the model.
+# Deliberately NOT features: T_max_1/T_max_2 (deterministic of slot_idx/tau)
+# and ittr (pure repetition index). ittr stays as a row/grouping key for
+# per-iteration regret samples but is never fed to the model.
 
 # Per-worker histogram bins (capped for unseen topologies).
 WORKER_HIST_BINS = 8
@@ -63,7 +57,6 @@ def rows_to_dataframe(per_solve_rows):
         counts = np.array(list(pw.values()), dtype=float)
         hist = np.zeros(WORKER_HIST_BINS, dtype=float)
         if counts.size:
-            # bin per-worker fragment counts.
             for c in counts:
                 b = int(min(WORKER_HIST_BINS - 1, c))
                 hist[b] += 1
@@ -117,12 +110,10 @@ def build_feature_matrix(df, feature_stats=None, fit_stats=False):
 
 
 class CostMLP(nn.Module):
-    """Multi-output cost predictor: (pred_runtime, pred_packets).
+    """Multi-output cost predictor over standardized log1p targets.
 
-    Outputs standardized log1p targets (see ``_targets`` / ``_zscore_targets``),
-    so combining them as ``w_rt * out[:,0] + w_pk * out[:,1]`` is a
-    scale-free trade-off where each weight is "one training-set std of that
-    objective". ``n_out=1`` keeps old single-objective checkpoints loadable.
+    Outputs combine as w_rt*out[:,0] + w_pk*out[:,1] — each weight is one
+    training-set std of that objective. n_out=1 keeps old checkpoints loadable.
     """
     def __init__(self, in_dim=FEATURE_DIM, hidden=128, n_layers=3, dropout=0.1,
                  n_out=2):
@@ -140,13 +131,10 @@ class CostMLP(nn.Module):
 
 
 def _targets(df):
-    """Targets with penalty for non-optimal solves.
+    """Targets; non-optimal rows are penalized on both axes so the model avoids
+    those (rho, tau) regions regardless of which objective is weighted.
 
     Returns (y_runtime, y_packets, penalty_runtime, penalty_packets).
-    Non-optimal rows (timelimit/best-effort) are floored on BOTH axes so the
-    model learns to avoid those (rho, tau) regions no matter which objective
-    the user weighs — the runtime head alone could otherwise be outweighed
-    when packets are weighted heavily.
     """
     ok_rt = df.loc[df["status"] == "optimal", "runtime"].values
     if ok_rt.size == 0:
@@ -185,12 +173,7 @@ def _zscore_targets(y_tr_rt, y_tr_pk, y_val_rt, y_val_pk):
 
 def train(X_tr, y_tr, X_val, y_val, *, hidden=128, n_layers=3, dropout=0.1,
           epochs=200, lr=1e-3, weight_decay=1e-4, patience=30, device="cpu"):
-    """Train the multi-output MLP.
-
-    ``y_tr``/``y_val`` are (n, 2) matrices of standardized log1p targets
-    (runtime, packets). HuberLoss over the whole matrix = equal weight on
-    each objective.
-    """
+    """Train the multi-output MLP on (n, 2) standardized log1p targets."""
     model = CostMLP(in_dim=X_tr.shape[1], hidden=hidden,
                     n_layers=n_layers, dropout=dropout,
                     n_out=y_tr.shape[1]).to(device)
@@ -238,17 +221,13 @@ def train(X_tr, y_tr, X_val, y_val, *, hidden=128, n_layers=3, dropout=0.1,
 
 def evaluate_selector(model_pack, df_eval, *, device="cpu",
                       objective="tradeoff", w_runtime=1.0, w_packets=1.0):
-    """Evaluate selector quality: compare chosen (rho, tau) with oracle.
+    """Compare chosen (rho, tau) with oracle per state.
 
-    Mirrors blocks.rho_tau.block._selector_quality: per-state feasibility
-    (pairs that solved optimally for THIS state) and a direct call to
-    predict.select_rho_tau, so the train-time and block-time selector paths
-    are identical. objective/weights must match what the block will use.
+    Mirrors blocks.rho_tau.block._selector_quality so the train-time and
+    block-time selector paths stay identical. objective/weights must match.
     """
     from blocks.rho_tau import predict as prd
-    # T_max_1/T_max_2 are deterministic functions of (slot_idx, tau) and ittr
-    # is a pure repetition index — none are model inputs. `ittr` stays as a
-    # grouping key only, giving one regret sample per iteration.
+    # T_max_1/T_max_2 and ittr are not model inputs; ittr is a grouping key only.
     state_cols = ["env", "ittr", "slot_idx",
                   "num_active_frags", "num_active_workers"]
     groups = df_eval.groupby(state_cols, sort=False)
@@ -258,13 +237,10 @@ def evaluate_selector(model_pack, df_eval, *, device="cpu",
                  if c not in ("rho", "tau")}
         for i in range(WORKER_HIST_BINS):
             state[f"whist_{i}"] = g[f"whist_{i}"].iloc[0]
-        # Per-slot load is one fragment per active worker, so a uniform
-        # per-worker dict reproduces the load_entropy/histogram features the
-        # training rows were built from.
+        # Uniform per-worker load reproduces the training histogram features.
         state["per_worker_num_frags"] = {
             str(i): 1 for i in range(int(g["num_active_workers"].iloc[0]))}
-        # Mark every grid pair explicitly (missing keys would otherwise default
-        # to "feasible" in select_rho_tau) — mirrors _selector_quality exactly.
+        # Feasible only if solved optimally for this state.
         feas = {(float(r), int(t)): 0
                 for r in model_pack["rho_grid"]
                 for t in model_pack["tau_grid"]}

@@ -22,13 +22,10 @@ def _solve_flexina_once(env_tuple, dict_list_items, max_aggregation,
      _stepsToSwitches, cutPorts, selectedSwitches,
      clusters) = env_tuple
     stepsToSwitches = _stepsToSwitches if steps_to_switches is None else steps_to_switches
-    # constraintNum10 enforces conservation against the fragments present in
-    # THIS slot's solve, so numAllFrags must be the per-slot count, not the
-    # env-wide one (they only coincide when every worker carries one fragment).
+    # constraintNum10 conserves fragments against THIS slot's solve, so
+    # numAllFrags must be the per-slot count, not the env-wide one.
     numAllFrags = sum(len(v) for v in dict_list_items.values())
-    # A slot only models the workers that emit fragments in it — with uneven
-    # loads some workers idle out of later slots and must not appear in the
-    # model/constraints (no-op when every slot carries every worker).
+    # Only workers emitting fragments in this slot appear in the model.
     workersTopology = {w: sw for w, sw in workersTopology.items()
                        if w in dict_list_items}
 
@@ -36,8 +33,7 @@ def _solve_flexina_once(env_tuple, dict_list_items, max_aggregation,
     Z_Used = set() if Z_Used is None else Z_Used
     timed_out = False
     construction_time = 0.0
-    # SCIP's own "limits/time" is the reliable time-limit path. SIGALRM
-    # is only a generous safety net (timeout_sec + 5s).
+    # SCIP's own time limit is the reliable path; SIGALRM is a safety net.
     if timeout_sec and timeout_sec > 0:
         signal.signal(signal.SIGALRM, _timeout_handler)
         signal.alarm(int(timeout_sec) + 5)
