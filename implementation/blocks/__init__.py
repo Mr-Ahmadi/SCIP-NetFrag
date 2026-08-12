@@ -10,6 +10,7 @@ from blocks.worker_dist import run_worker_dist
 from blocks.inart_comparison import run_inart_comparison
 from blocks.param_sweep import run_param_sweep
 from blocks.rho_tau_model import run_rho_tau_model
+from blocks.big_env import run_big_env
 
 # Backward-compat alias kept for scripts that referenced the old name.
 run_tradeoff = run_param_sweep
@@ -25,6 +26,7 @@ BLOCK_RUNNERS = {
     "inart":          run_inart_comparison,
     "param_sweep":    run_param_sweep,
     "rho_tau_model":  run_rho_tau_model,
+    "big_env":        run_big_env,
 }
 
 __all__ = [
@@ -33,5 +35,5 @@ __all__ = [
     "run_pct_2cluster", "run_pct_1cluster",
     "run_start_time", "run_time_window", "run_worker_dist",
     "run_inart_comparison", "run_param_sweep", "run_tradeoff",
-    "run_rho_tau_model",
+    "run_rho_tau_model", "run_big_env",
 ]

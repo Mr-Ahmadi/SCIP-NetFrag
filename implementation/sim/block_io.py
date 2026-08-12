@@ -42,6 +42,9 @@ ENV_DISPLAY_NAMES = {
     "env_2c_10sw_skew15": "2 Clusters (Zipf 1.5)",
     "env_2c_10sw_uneven": "2 Clusters (Uneven)",
     "env_3c_14sw_4f": "3 Clusters (14sw)",
+    "env_4c_20sw_4f": "4 Clusters (20sw)",
+    "env_5c_25sw_4f": "5 Clusters (25sw)",
+    "env_6c_30sw_4f": "6 Clusters (30sw)",
 }
 
 
