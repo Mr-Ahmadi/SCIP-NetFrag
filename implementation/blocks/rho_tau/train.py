@@ -56,6 +56,8 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
+from blocks.rho_tau.topo_features import TOPOLOGY_FEATURES
+
 
 NUMERIC_FEATURES = [
     "rho",
@@ -78,6 +80,10 @@ NUMERIC_FEATURES = [
     "space_log",            # log1p(sel_switches * tau * num_active_frags)
     "frags_per_worker",     # num_active_frags / num_active_workers
 ]
+# Topology descriptors (constant per env, from the collapsed env tuple) so
+# connectivity-distinct envs stay separable even where per-solve load stats
+# coincide; see topo_features.py.
+NUMERIC_FEATURES += TOPOLOGY_FEATURES
 
 # Deliberately NOT features: T_max_1/T_max_2 (deterministic of slot_idx/tau)
 # and ittr (pure repetition index). ittr stays as a row/grouping key for
@@ -161,6 +167,8 @@ def rows_to_dataframe(per_solve_rows):
         }
         row.update(derived_features(r["rho"], r["tau"], r["num_switches"],
                                     r["num_workers"], naf, naw))
+        for name in TOPOLOGY_FEATURES:
+            row[name] = float(r.get(name, 0.0))
         row.update({f"whist_{i}": float(hist[i])
                     for i in range(WORKER_HIST_BINS)})
         feats.append(row)
@@ -329,7 +337,8 @@ def _rank_loss(pred, target, mask, group_ids):
 def train(X_tr, t_tr, g_tr, X_val, t_val, g_val, *, hidden=128, n_layers=3,
           dropout=0.1, epochs=200, lr=1e-3, weight_decay=1e-4, patience=30,
           batch_size=256, w_timeout=0.5, w_rank=0.3, w_censor=0.1,
-          low_w=3.0, device="cpu", seed=0, verbose=True):
+          low_w=3.0, w_cheap=0.0, cheap_thresh=0.5,
+          device="cpu", seed=0, verbose=True):
     """Mini-batch training of the 3-head MLP with censored-runtime handling.
 
     low_w > 0 reweights the runtime regression rows that fall at/below the
@@ -339,6 +348,15 @@ def train(X_tr, t_tr, g_tr, X_val, t_val, g_val, *, hidden=128, n_layers=3,
     unweighted Huber/log1p fit spends nearly all its capacity on the
     expensive tail, which is why an unweighted model reports "~0 s" for almost
     every cheap config. low_w=0 restores the old unweighted behaviour.
+
+    w_cheap > 0 adds a flat extra weight to runtime rows whose raw runtime is
+    below cheap_thresh (default 0.5 s), on top of the low_w gaussian. The
+    gaussian alone peaks at the z-mean (the *median* runtime), so the extreme
+    cheap corner (sub-0.05 s solves) gets ~1.5x less weight than mid-cheap
+    rows and is sacrificed: predictions there are pulled toward the floor and
+    clamp to exactly 0. The flat cheap boost gives that corner equal standing
+    with mid-cheap rows, which is what actually moves the sub-0.05 s
+    predictions off the 0.0 floor.
     """
     torch.manual_seed(seed)
     model = CostMLP(in_dim=X_tr.shape[1], hidden=hidden, n_layers=n_layers,
@@ -359,10 +377,15 @@ def train(X_tr, t_tr, g_tr, X_val, t_val, g_val, *, hidden=128, n_layers=3,
 
     # Low-end runtime emphasis: weight rows below the z-mean with a gaussian
     # bump so the cheap-solve regime (where the selector picks) drives the
-    # runtime head as much as the expensive tail does.
-    if low_w > 0:
+    # runtime head as much as the expensive tail does. w_cheap adds a flat
+    # boost for the sub-cheap_thresh rows the gaussian under-serves.
+    if low_w > 0 or w_cheap > 0:
         z = t_tr["z_rt"]
-        w_rt = (1.0 + low_w * np.exp(-(z ** 2) / 2.0) * (z < 0)).astype(np.float32)
+        w_rt = np.ones_like(z, dtype=np.float32)
+        if low_w > 0:
+            w_rt += low_w * np.exp(-(z ** 2) / 2.0) * (z < 0)
+        if w_cheap > 0:
+            w_rt += w_cheap * (t_tr["y_rt"] < cheap_thresh).astype(np.float32)
         tr["w_rt"] = _t(w_rt)
 
     # Class balance for the timeout head (timeouts are the minority class).
@@ -637,15 +660,38 @@ def _state_from_group(g):
 # ------------------------------------------------------------------ split ---
 
 def _group_split(df, val_frac, seed, exclude_env=None):
-    """Split by state group so a state's (rho, tau) cells never straddle splits."""
+    """Stratified grouped split by state group.
+
+    Splitting by state group keeps a state's (rho, tau) cells on one side of
+    the split — otherwise validation is memorization of its siblings. On top
+    of that, groups are drawn *per env*, so each environment contributes
+    (roughly) its val_frac share to validation instead of a single global
+    shuffle deciding it. With ~30 state groups a plain random draw routinely
+    drops whole environments out of validation (or out of training), which
+    silently biases both early stopping and the reported held-out accuracy
+    toward whichever envs happen to land in val. Environments with a single
+    state group can't be split and stay entirely in training.
+    """
     d = df if exclude_env is None else df[df["env"] != exclude_env]
-    keys = d[STATE_COLS].astype(str).agg("|".join, axis=1)
-    uniq = np.array(sorted(keys.unique()))
     rng = np.random.RandomState(seed)
-    rng.shuffle(uniq)
-    n_val = max(1, int(round(val_frac * len(uniq))))
-    val_keys = set(uniq[:n_val])
+    val_keys = set()
+    for env, g in d.groupby("env"):
+        uniq = np.array(sorted(
+            g[STATE_COLS].astype(str).agg("|".join, axis=1).unique()))
+        if len(uniq) <= 1:
+            continue
+        rng.shuffle(uniq)
+        n_val = min(max(1, int(round(val_frac * len(uniq)))), len(uniq) - 1)
+        val_keys.update(uniq[:n_val])
+    keys = d[STATE_COLS].astype(str).agg("|".join, axis=1)
     is_val = keys.isin(val_keys)
+    if is_val.sum() == 0:
+        # Degenerate: every env is unsplittable. Fall back to a plain grouped
+        # split so the train/val pair still exists.
+        uniq = np.array(sorted(keys.unique()))
+        rng.shuffle(uniq)
+        n_val = max(1, int(round(val_frac * len(uniq))))
+        is_val = keys.isin(set(uniq[:n_val]))
     return d[~is_val].copy(), d[is_val].copy()
 
 
@@ -663,7 +709,9 @@ def main():
     p.add_argument("--test_env", default=None,
                    help="Leave-one-env-out: hold out this env entirely.")
     p.add_argument("--val_frac", type=float, default=0.15,
-                   help="Fraction of *state groups* held out for validation.")
+                   help="Fraction of *state groups* held out for validation, "
+                        "drawn per env so every env contributes a validation "
+                        "share (stratified grouped split).")
     p.add_argument("--seed", type=int, default=5)
     p.add_argument("--epochs", type=int, default=400)
     p.add_argument("--hidden", type=int, default=256)
@@ -712,6 +760,17 @@ def main():
                         "held-out states (median rel. err ~0.26 vs ~1.0) at a "
                         "small cost to tail accuracy (val runtime r2_log1p "
                         "0.941 vs 0.951).")
+    p.add_argument("--w_cheap", type=float, default=0.0,
+                   help="Extra flat weight for runtime-regression rows with "
+                        "raw runtime below --cheap_thresh, on top of the "
+                        "low_w gaussian. The gaussian peaks at the z-mean "
+                        "(median runtime), so the extreme cheap corner "
+                        "(sub-0.05 s) is under-weighted and its predictions "
+                        "clamp to exactly 0.0; this gives that corner equal "
+                        "standing with mid-cheap rows. 0 disables it.")
+    p.add_argument("--cheap_thresh", type=float, default=0.5,
+                   help="Raw-runtime cutoff (seconds) for the --w_cheap "
+                        "flat weight.")
     p.add_argument("--timeout_thresh", type=float, default=0.5,
                    help="Candidates with predicted P(timeout) above this are "
                         "skipped by the selector.")
@@ -758,6 +817,10 @@ def main():
         raise SystemExit("Split produced an empty side; lower --val_frac.")
     print(f"  train rows={len(tr_df)}  val rows={len(val_df)}"
           + (f"  test rows={len(test_df)}" if test_df is not None else ""))
+    print("  val groups per env:",
+          dict(Counter(val_df["env"])))
+    print("  train groups per env:",
+          dict(Counter(tr_df["env"])))
 
     t_tr = _targets(tr_df, censoring=args.censoring)
     pen = t_tr["penalty_stats"]
@@ -794,6 +857,7 @@ def main():
                       patience=args.patience, batch_size=args.batch_size,
                       w_timeout=args.w_timeout, w_rank=args.w_rank,
                       w_censor=args.w_censor, low_w=args.low_w,
+                      w_cheap=args.w_cheap, cheap_thresh=args.cheap_thresh,
                       device=device,
                       seed=args.seed + i)
         models.append(m)
@@ -830,6 +894,7 @@ def main():
                         patience=args.patience, batch_size=args.batch_size,
                         w_timeout=args.w_timeout, w_rank=args.w_rank,
                         w_censor=args.w_censor, low_w=args.low_w,
+                        w_cheap=args.w_cheap, cheap_thresh=args.cheap_thresh,
                         device=device,
                         seed=args.seed + 1000 + i, verbose=False)
             report_models.append(m)
@@ -862,6 +927,8 @@ def main():
         "censoring": args.censoring,
         "timeout_thresh": args.timeout_thresh,
         "low_w": args.low_w,
+        "w_cheap": args.w_cheap,
+        "cheap_thresh": args.cheap_thresh,
         "penalty_runtime": (pen or {}).get("runtime"),
         "penalty_packets": (pen or {}).get("packets"),
     }, args.out_model)
@@ -870,10 +937,12 @@ def main():
     eval_report = {
         "censoring": args.censoring,
         "low_w": args.low_w,
+        "w_cheap": args.w_cheap,
+        "cheap_thresh": args.cheap_thresh,
         "n_models": len(models),
         "best_val_loss": float(np.min(val_losses)),
         "val_loss_per_model": [float(v) for v in val_losses],
-        "split": {"kind": "leave_one_env_out" if args.test_env else "grouped_random",
+        "split": {"kind": "leave_one_env_out" if args.test_env else "grouped_stratified_by_env",
                   "state_cols": STATE_COLS, "val_frac": args.val_frac,
                   "train_rows": len(tr_df), "val_rows": len(val_df),
                   "test_rows": (len(test_df) if test_df is not None else 0)},
@@ -929,6 +998,9 @@ def main():
             "w_packets": args.w_packets,
             "timeout_thresh": args.timeout_thresh,
             "censoring": args.censoring,
+            "low_w": args.low_w,
+            "w_cheap": args.w_cheap,
+            "cheap_thresh": args.cheap_thresh,
         }, f, indent=2)
     print(f"Saved features spec -> {args.out_features}")
 

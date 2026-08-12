@@ -1,5 +1,6 @@
 """Centralized Matplotlib style and reusable chart builders."""
 import os
+import warnings
 from dataclasses import dataclass
 from typing import Optional
 
@@ -89,18 +90,28 @@ def grid(ax, axis: Optional[str] = None):
     ax.set_axisbelow(s.axisbelow)
 
 
-def save_fig(fig, filename: str, *, show: bool = True, bbox_inches=None):
+def save_fig(fig, filename: str, *, show: bool = True, bbox_inches=None,
+             close: bool = True):
     s = style
-    fig.tight_layout()
     os.makedirs(os.path.dirname(os.path.abspath(filename)), exist_ok=True)
+    # tight_layout can't satisfy the constraint on colorbar figures (e.g.
+    # heatmaps) — fall back to bbox_inches="tight" trimming on save.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fig.tight_layout()
     fig.savefig(filename, bbox_inches=bbox_inches or s.bbox_inches,
                 format=s.format)
     if show:
-        plt.show()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            plt.show()
+    if close:
+        plt.close(fig)
 
 
 def legend(ax, **kwargs):
-    kwargs.setdefault("prop", {"size": style.legend_size})
+    size = kwargs.pop("size", None) or style.legend_size
+    kwargs.setdefault("prop", {"size": size})
     return ax.legend(**kwargs)
 
 
@@ -137,8 +148,11 @@ def plot_grouped_bars(labels, data_list, label_list, ylabel, xlabel, filename,
     ax.set_xticks(x)
     ha = xtick_ha or ('right' if xtick_rotation else 'center')
     ax.set_xticklabels(labels, rotation=xtick_rotation, ha=ha)
-    legend(ax, loc='upper left', bbox_to_anchor=legend_bbox,
-           ncol=legend_ncol or n) if legend_bbox else legend(ax)
+    legend_kwargs = {}
+    if legend_bbox:
+        legend_kwargs = dict(loc='upper right', bbox_to_anchor=legend_bbox,
+                             ncol=legend_ncol or n)
+    legend(ax, size=legend_size, **legend_kwargs)
     fmt_axis(ax)
     grid(ax)
     if log_scale:
@@ -147,22 +161,35 @@ def plot_grouped_bars(labels, data_list, label_list, ylabel, xlabel, filename,
 
 
 def plot_errorbar(labels, data_list, error_list, label_list, ylabel, xlabel,
-                  filename, fmt_list=None, figsize=None, fontsize=None,
-                  legend_bbox=None, legend_size=None,
+                  filename, fmt_list=None, color_indices=None, figsize=None,
+                  fontsize=None, legend_bbox=None, legend_size=None,
                   xtick_rotation=0, xtick_ha=None):
-    """Draw an error-bar line chart with multiple series."""
+    """Draw an error-bar line chart with multiple series.
+
+    Colors come from the shared palette (``color_indices``, like
+    ``plot_grouped_bars``) so each model keeps the same color across bar and
+    line representations.
+    """
     s = apply({"font_size": fontsize} if fontsize else {})
+    cmap = sns.color_palette(s.palette)
     if fmt_list is None:
         fmt_list = list(s.markers[:len(data_list)])
+    if color_indices is None:
+        color_indices = list(range(len(data_list)))
 
     fig, ax = new_fig(figsize)
 
-    for data, err, lbl, fmt in zip(data_list, error_list, label_list, fmt_list):
-        ax.errorbar(labels, data, yerr=err, fmt=fmt,
-                    markersize=s.marker_size, capsize=s.capsize, label=lbl)
+    for i, (data, err, lbl, fmt) in enumerate(
+            zip(data_list, error_list, label_list, fmt_list)):
+        ax.errorbar(labels, data, yerr=err, fmt=fmt, label=lbl,
+                    color=cmap[color_indices[i]],
+                    markersize=s.marker_size, capsize=s.capsize)
 
-    legend(ax, loc='upper center', bbox_to_anchor=legend_bbox,
-           ncol=min(2, len(label_list))) if legend_bbox else legend(ax)
+    legend_kwargs = {}
+    if legend_bbox:
+        legend_kwargs = dict(loc='upper center', bbox_to_anchor=legend_bbox,
+                             ncol=min(2, len(label_list)))
+    legend(ax, size=legend_size, **legend_kwargs)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     if xtick_rotation:

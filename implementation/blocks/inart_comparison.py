@@ -9,7 +9,7 @@ from blocks._imports import (
     env_2c_10sw_3f, env_2c_10sw_uneven, env_3c_14sw_4f,
     env_2c_10sw_skew15, fmt_axis, new_fig, np, plot_errorbar, plot_grid,
     plot_grouped_bars, plot_legend, plt,
-    save_fig, style, time,
+    save_fig, sns, style, time,
 )
 
 # Model configs: (name, apply_constraints_fn)
@@ -167,16 +167,19 @@ def run_inart_comparison():
     plot_errorbar(x_labels, [y_inart, y_flex], [e_inart, e_flex],
                   INART_LABELS, YLEN_RUNTIME, XLEN_TOPOLOGY,
                   "plots/inart_runtime_errorbar.pdf",
-                  fmt_list=INART_MARKERS,
+                  fmt_list=INART_MARKERS, color_indices=INART_COLORS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE,
                   xtick_rotation=20)
 
     apply_plot_style()
+    cmap = sns.color_palette(style.palette)
     fig, ax = new_fig()
     ax.plot(x_labels, y_inart, ls='dashed', marker='s',
-            markersize=style.marker_size, label=INART_LABELS[0])
+            markersize=style.marker_size, label=INART_LABELS[0],
+            color=cmap[INART_COLORS[0]])
     ax.plot(x_labels, y_flex, ls='dashed', marker='p',
-            markersize=style.marker_size, label=INART_LABELS[1])
+            markersize=style.marker_size, label=INART_LABELS[1],
+            color=cmap[INART_COLORS[1]])
     plot_legend(ax, loc='upper center', bbox_to_anchor=LEGEND_BBOX_LINE,
                 ncol=LEGEND_NCOL_2)
     ax.set_xlabel(XLEN_TOPOLOGY)

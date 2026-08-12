@@ -21,6 +21,8 @@ XLEN_DISTRIBUTION = "worker distribution"
 XLEN_RHO = "ρ (switch selection %)"
 XLEN_TAU_START = "τ_F start (slots)"
 XLEN_TIME_WINDOW = "time window (%)"
+XLEN_TAU_WINDOW = "τ_F (time window)"
+XLEN_REDUCTION = "Packet reduction (1 − pkts/pkts₀)"
 XLEN_FRAGS = "number of fragments"
 XLEN_SLOTS = "number of slots"
 

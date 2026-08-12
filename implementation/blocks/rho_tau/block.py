@@ -1,7 +1,7 @@
 import sys
 
 from blocks._imports import (
-    BlockRun, LEGEND_BBOX_LINE, LEGEND_SIZE, LEGEND_NCOL_2,
+    BlockRun, LEGEND_SIZE, LEGEND_NCOL_2,
     YLEN_RUNTIME, apply_plot_style, fmt_axis,
     json, new_fig, np, os, plot_grid, plot_legend, save_fig, sns,
     style, time,
@@ -18,7 +18,8 @@ def _train_with_args(data, out_model, out_eval, out_features, *,
                      batch_size=256, patience=40, n_models=3,
                      n_report_models=4,
                      w_timeout=0.5, w_rank=0.3, w_censor=0.1,
-                     low_w=3.0, timeout_thresh=0.5):
+                     low_w=3.0, w_cheap=0.0, cheap_thresh=0.5,
+                     timeout_thresh=0.5):
     """Invoke blocks.rho_tau.train.main() with a specific argument vector."""
     argv = ["blocks.rho_tau.train",
             "--data", str(data),
@@ -44,6 +45,8 @@ def _train_with_args(data, out_model, out_eval, out_features, *,
             "--w_rank", str(w_rank),
             "--w_censor", str(w_censor),
             "--low_w", str(low_w),
+            "--w_cheap", str(w_cheap),
+            "--cheap_thresh", str(cheap_thresh),
             "--timeout_thresh", str(timeout_thresh)]
     if test_env:
         argv += ["--test_env", test_env]
@@ -115,18 +118,14 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
         best_pk = min(primal, key=lambda r: r["packets"])
         worst_pk = max(primal, key=lambda r: r["packets"])
 
-        # State from the first row of the group.
+        # State from the first row of the group. Carries every numeric feature
+        # the model was trained on (incl. the constant-per-env topology
+        # descriptors); keys absent from older param_sweep data are skipped so
+        # `_complete_state` defaults them to 0, matching training on old rows.
         first = rs[0]
-        state = {
-            "num_switches": first["num_switches"],
-            "num_workers": first["num_workers"],
-            "num_all_frags": first["num_all_frags"],
-            "num_clusters": first["num_clusters"],
-            "num_active_frags": first["num_active_frags"],
-            "num_active_workers": first["num_active_workers"],
-            "slot_idx": first["slot_idx"],
-            "per_worker_num_frags": first.get("per_worker_num_frags") or {},
-        }
+        state = {c: float(first[c]) for c in model_pack["numeric_features"]
+                 if c not in ("rho", "tau") and c in first}
+        state["per_worker_num_frags"] = first.get("per_worker_num_frags") or {}
         base = {"env": first["env"], "ittr": first["ittr"],
                 "slot_idx": first["slot_idx"],
                 "best_runtime": float(best["runtime"]),
@@ -288,7 +287,7 @@ def _plot_pred_vs_actual(qualities, path, *, kind="runtime", log_scale=False,
         else:
             txt = (f"R$^2$ = {r2:.2f}\n"
                    f"Spearman = {rho:.2f}")
-    ax.text(0.03, 0.97, txt, transform=ax.transAxes, va="top", ha="left",
+    ax.text(0.97, 0.03, txt, transform=ax.transAxes, va="bottom", ha="right",
             fontsize=LEGEND_SIZE, family="monospace",
             bbox=dict(boxstyle="round,pad=0.35", fc="white", ec="0.75",
                       lw=0.8, alpha=0.9))
@@ -296,7 +295,7 @@ def _plot_pred_vs_actual(qualities, path, *, kind="runtime", log_scale=False,
     ax.set_ylabel(f"observed {kind}{unit}", fontsize=s.label_size)
     ax.set_title(f"Predicted vs observed {kind} at the selector's pick "
                  f"(n={len(pts)} states)", fontsize=s.title_size)
-    plot_legend(ax, loc="upper center", bbox_to_anchor=LEGEND_BBOX_LINE,
+    plot_legend(ax, loc="upper left", bbox_to_anchor=(0.03, 0.99),
                 ncol=min(LEGEND_NCOL_2, len(envs) + 1),
                 fontsize=LEGEND_SIZE)
     plot_grid(ax, axis="both")
@@ -346,7 +345,7 @@ def _plot_regression_accuracy(df, pred, path, *, kind="runtime", log_scale=False
     ax.set_ylabel(f"observed {kind}{unit}", fontsize=s.label_size)
     ax.set_title(f"Regression accuracy: predicted vs observed {kind} "
                  f"(all rows, n={len(x)})", fontsize=s.title_size)
-    plot_legend(ax, loc="upper center", bbox_to_anchor=LEGEND_BBOX_LINE,
+    plot_legend(ax, loc="lower right",
                 ncol=min(LEGEND_NCOL_2, len(envs) + 1), fontsize=LEGEND_SIZE)
     plot_grid(ax, axis="both")
     fmt_axis(ax, axis="both")
@@ -427,6 +426,8 @@ def run_rho_tau_model():
     test_env = None
     device = None
     low_w = 3.0
+    w_cheap = 2.0
+    cheap_thresh = 0.5
 
     run = BlockRun("rho_tau_model", config={
         "data": data_path,
@@ -440,7 +441,7 @@ def run_rho_tau_model():
         "val_frac": val_frac, "seed": seed, "test_env": test_env,
         "objective": OBJECTIVE, "w_runtime": W_RUNTIME, "w_packets": W_PACKETS,
         "censoring": CENSORING, "timeout_thresh": TIMEOUT_THRESH,
-        "low_w": low_w,
+        "low_w": low_w, "w_cheap": w_cheap, "cheap_thresh": cheap_thresh,
         "device": device or "auto",
     }, axis={"x": "topology", "y_runtime": YLEN_RUNTIME,
              "x_ticks": []})
@@ -477,7 +478,7 @@ def run_rho_tau_model():
         w_runtime=W_RUNTIME, w_packets=W_PACKETS, censoring=CENSORING,
         batch_size=batch_size, patience=patience, n_models=n_models,
         n_report_models=n_report_models, timeout_thresh=TIMEOUT_THRESH,
-        low_w=low_w)
+        low_w=low_w, w_cheap=w_cheap, cheap_thresh=cheap_thresh)
     train_time = time.time() - train_t0
     print(f"  training done in {train_time:.1f}s")
 

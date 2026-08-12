@@ -1,5 +1,5 @@
 from blocks._imports import (
-    BAR_WIDTH, BASELINE_COLORS, BASELINE_HATCHES, BASELINE_LABELS, BASELINE_MARKERS, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_2, LEGEND_SIZE, XLEN_AGG, YLEN_FRAG, YLEN_RUNTIME, _prepare_dict_list, _unpack_env, apply_constraints, apply_constraints_basic, apply_plot_style, create_Fragments, defineModel, defineModel_selectedSwitches, env_1c_5sw_3f, fmt_axis, new_fig, np, objective, plot_errorbar, plot_grid, plot_grouped_bars, plot_legend, preProcessMappingY, preProcessMappingZ, save_fig, solveProblem, style, time,
+    BAR_WIDTH, BASELINE_COLORS, BASELINE_HATCHES, BASELINE_LABELS, BASELINE_MARKERS, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_2, LEGEND_SIZE, XLEN_AGG, YLEN_FRAG, YLEN_RUNTIME, _prepare_dict_list, _unpack_env, apply_constraints, apply_constraints_basic, apply_plot_style, create_Fragments, defineModel, defineModel_selectedSwitches, env_1c_5sw_3f, fmt_axis, new_fig, np, objective, plot_errorbar, plot_grid, plot_grouped_bars, plot_legend, preProcessMappingY, preProcessMappingZ, save_fig, sns, solveProblem, style, time,
 )
 
 def run_baseline():
@@ -163,7 +163,7 @@ def run_baseline():
     plot_errorbar(x_labels, [C_1, C_5], [error_C1, error_C5],
                   BASELINE_LABELS, YLEN_FRAG, XLEN_AGG,
                   "plots/basic_fragments_vs_aggregation_errorbar.pdf",
-                  fmt_list=BASELINE_MARKERS,
+                  fmt_list=BASELINE_MARKERS, color_indices=BASELINE_COLORS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
     y1 = kindsofModelsRuntime[defineModel]
@@ -173,15 +173,18 @@ def run_baseline():
     plot_errorbar(x_labels, [y1, y5], [error_y1, error_y5],
                   BASELINE_LABELS, YLEN_RUNTIME, XLEN_AGG,
                   "plots/basic_runtime_vs_aggregation_errorbar.pdf",
-                  fmt_list=BASELINE_MARKERS,
+                  fmt_list=BASELINE_MARKERS, color_indices=BASELINE_COLORS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
     apply_plot_style()
+    cmap = sns.color_palette(style.palette)
     fig, ax = new_fig()
     ax.plot(x_labels, y1, ls='dashed', marker='o',
-            markersize=style.marker_size, label=BASELINE_LABELS[0])
+            markersize=style.marker_size, label=BASELINE_LABELS[0],
+            color=cmap[BASELINE_COLORS[0]])
     ax.plot(x_labels, y5, ls='dashed', marker='p',
-            markersize=style.marker_size, label=BASELINE_LABELS[1])
+            markersize=style.marker_size, label=BASELINE_LABELS[1],
+            color=cmap[BASELINE_COLORS[1]])
     plot_legend(ax, loc='upper center', bbox_to_anchor=LEGEND_BBOX_LINE,
                 ncol=LEGEND_NCOL_2)
     ax.set_xlabel(XLEN_AGG)

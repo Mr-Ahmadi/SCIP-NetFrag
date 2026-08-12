@@ -166,7 +166,7 @@ def run_models():
     plot_errorbar(x_labels, [y2, y3, y4, y5], [e2, e3, e4, e5],
                   MODEL_LABELS, YLEN_RUNTIME, XLEN_AGG,
                   "plots/aggregation_runtime_errorbar.pdf",
-                  fmt_list=MODEL_MARKERS,
+                  fmt_list=MODEL_MARKERS, color_indices=MODEL_COLORS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
     plot_grouped_bars(x_labels, [C_2, C_3, C_4, C_5], MODEL_LABELS,
@@ -178,7 +178,7 @@ def run_models():
     plot_errorbar(x_labels, [y2, y3, y4, y5], [e2, e3, e4, e5],
                   MODEL_LABELS, YLEN_RUNTIME, XLEN_SLOTS,
                   "plots/aggregation_runtime_vs_slots_errorbar.pdf",
-                  fmt_list=MODEL_MARKERS,
+                  fmt_list=MODEL_MARKERS, color_indices=MODEL_COLORS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
     tree_cfg = run.config["scalability_tree"]

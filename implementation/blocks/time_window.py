@@ -157,7 +157,7 @@ def run_time_window():
     plot_errorbar(x_labels, [y2, y3, y4, y5], [e2, e3, e4, e5],
                   MODEL_LABELS, YLEN_RUNTIME, XLEN_TIME_WINDOW,
                   "plots/timewindow_runtime.pdf",
-                  fmt_list=MODEL_MARKERS,
+                  fmt_list=MODEL_MARKERS, color_indices=MODEL_COLORS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
     summary = run.summary(x_labels, series_order=MODEL_LABELS,

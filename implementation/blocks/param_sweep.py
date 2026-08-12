@@ -1,8 +1,13 @@
 from blocks._imports import (
-    BlockRun, XLEN_RHO, YLEN_FRAG, YLEN_RUNTIME, _block_json_default, _prepare_dict_list, _unpack_env, apply_plot_style, env_1c_5sw_3f, env_2c_10sw_3f, env_2c_10sw_6f, env_2c_10sw_skew15, env_3c_14sw_4f, fmt_axis, json, new_fig, np, os, plot_grid, plot_legend, plt, save_fig, style, time,
+    BlockRun, XLEN_RHO, XLEN_REDUCTION, XLEN_TAU_WINDOW, YLEN_FRAG, YLEN_RUNTIME,
+    _block_json_default, _prepare_dict_list, _unpack_env, apply_plot_style,
+    env_1c_5sw_3f, env_2c_10sw_3f, env_2c_10sw_6f, env_2c_10sw_skew15,
+    env_3c_14sw_4f, fmt_axis, json, new_fig, np, os, plot_grid, plot_legend,
+    plt, save_fig, style, time,
 )
 from blocks._common import ADD_TIME_FACTOR
 from blocks._flexina_helpers import _solve_flexina_once, _no_aggregation_packets
+from blocks.rho_tau.topo_features import topology_features
 
 
 def _heatmap(grid, rho_labels, tau_labels, title, fname, cmap_name,
@@ -19,8 +24,8 @@ def _heatmap(grid, rho_labels, tau_labels, title, fname, cmap_name,
     ax.set_yticks(np.arange(len(rho_labels)))
     ax.set_xticklabels(tau_labels, fontsize=s.tick_size)
     ax.set_yticklabels(rho_labels, fontsize=s.tick_size)
-    ax.set_xlabel('τ_F (time window)', fontsize=s.label_size)
-    ax.set_ylabel('ρ (switch selection)', fontsize=s.label_size)
+    ax.set_xlabel(XLEN_TAU_WINDOW, fontsize=s.label_size)
+    ax.set_ylabel(XLEN_RHO, fontsize=s.label_size)
     ax.set_title(title, fontsize=s.title_size)
     cbar = fig.colorbar(im, ax=ax)
     cbar.set_label(cbar_label, fontsize=s.label_size)
@@ -111,6 +116,10 @@ def run_param_sweep():
         env_tuple = _unpack_env(envTemp, load=True)
         dict_list = _prepare_dict_list(env_tuple[9], env_tuple[10])
         env_name = envTemp.__name__
+        # Topology descriptors (constant per env) so the cost-predictor can
+        # separate connectivity-distinct envs even when their per-solve load
+        # statistics coincide; recorded on every per_solve row.
+        topo_feats = topology_features(env_tuple)
         # Topology fields for per-solve row labels.
         (_, _, _, pSwitchesNumber, _,
          _, _, workersNumber, numAllFrags,
@@ -180,6 +189,7 @@ def run_param_sweep():
                             'num_active_frags': num_active_frags,
                             'num_active_workers': num_active_workers,
                             'per_worker_num_frags': _load,
+                            **topo_feats,
                         })
                         # Credit real time of every sub-solve (including
                         # timeouts) so RuntimeTotal reflects total wall time.
@@ -245,11 +255,11 @@ def run_param_sweep():
         _heatmap(pkt_grid, rho_labels, tau_labels,
                  f'# fragments  ({env_name})',
                  f"plots/param_sweep_fragments_heatmap_{env_name}.pdf",
-                 cmap_name=style.cmap_fragments, cbar_label='# fragments')
+                 cmap_name=style.cmap_fragments, cbar_label=YLEN_FRAG)
         _heatmap(rt_grid, rho_labels, tau_labels,
                  f'runtime  ({env_name})',
                  f"plots/param_sweep_runtime_heatmap_{env_name}.pdf",
-                 cmap_name=style.cmap_runtime, cbar_label='runtime (s)')
+                 cmap_name=style.cmap_runtime, cbar_label=YLEN_RUNTIME)
         print(f"  [{env_name}] heatmaps saved "
               f"-> plots/param_sweep_{{fragments,runtime}}_heatmap_{env_name}.pdf")
 
@@ -278,9 +288,8 @@ def run_param_sweep():
             cbar = plt.colorbar(sc, ax=ax)
             cbar.set_label('ρ', fontsize=style.label_size)
             cbar.ax.tick_params(labelsize=style.tick_size)
-            ax.set_xlabel('Packet reduction (1 - pkts/pkts₀)',
-                          fontsize=style.label_size)
-            ax.set_ylabel('Runtime (s)', fontsize=style.label_size)
+            ax.set_xlabel(XLEN_REDUCTION, fontsize=style.label_size)
+            ax.set_ylabel(YLEN_RUNTIME, fontsize=style.label_size)
             ax.set_title(f'Trade-off ({env_name})',
                         fontsize=style.title_size)
             ax.tick_params(labelsize=style.tick_size)
