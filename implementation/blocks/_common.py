@@ -13,7 +13,7 @@ BLOCKS = {
     "inart":          "Block #5: InArt vs FlexINA comparison (single-PS structural proxy, not full InArt algorithm)",
     "param_sweep":    "Block #6: 2-D (rho x tau_F) sweep - heatmaps + trade-off scatter",
     "rho_tau_model":  "Block #7: train + test (rho, tau_F) cost-predictor (param_sweep -> model + selector eval)",
-    "big_env":        "Block #8: single FlexINA solve on the 20- and 25-switch envs (no time limit)",
+    "big_env":        "Block #8: single FlexINA solve on the 15-, 20- and 25-switch envs (no time limit) + scaling plot",
 }
 
 

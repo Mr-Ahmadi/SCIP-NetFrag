@@ -18,6 +18,7 @@ from .env_2c_10sw_skew15 import env_2c_10sw_skew15
 from .env_2c_10sw_skew1 import env_2c_10sw_skew1
 
 from .env_3c_14sw_4f import env_3c_14sw_4f
+from .env_3c_15sw_4f import env_3c_15sw_4f
 from .env_4c_20sw_4f import env_4c_20sw_4f
 from .env_5c_25sw_4f import env_5c_25sw_4f
 from .env_6c_30sw_4f import env_6c_30sw_4f
@@ -34,6 +35,7 @@ __all__ = [
     "env_2c_10sw_skew15",
     "env_2c_10sw_skew1",
     "env_3c_14sw_4f",
+    "env_3c_15sw_4f",
     "env_4c_20sw_4f",
     "env_5c_25sw_4f",
     "env_6c_30sw_4f",

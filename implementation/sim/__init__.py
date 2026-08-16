@@ -29,6 +29,7 @@ from .environments import (
     env_2c_10sw_skew15,
     env_2c_10sw_skew1,
     env_3c_14sw_4f,
+    env_3c_15sw_4f,
     env_4c_20sw_4f,
     env_5c_25sw_4f,
     env_6c_30sw_4f,
