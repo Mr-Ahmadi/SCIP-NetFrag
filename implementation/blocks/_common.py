@@ -3,17 +3,24 @@ import sys
 
 
 BLOCKS = {
-    "baseline":       "Block #1: baseline comparison",
-    "models":         "Block #1b: model comparison (4 models, 2-cluster env)",
-    "pct_2cluster":   "Block #1c: switch percentage (2-cluster env)",
-    "pct_1cluster":   "Block #1d: switch percentage (1-cluster env)",
-    "start_time":     "Block #2: start time experiment",
-    "time_window":    "Block #3: time window experiment",
-    "worker_dist":    "Block #4: worker distribution experiment",
-    "inart":          "Block #5: InArt vs FlexINA comparison (single-PS structural proxy, not full InArt algorithm)",
-    "param_sweep":    "Block #6: 2-D (rho x tau_F) sweep - heatmaps + trade-off scatter",
-    "rho_tau_model":  "Block #7: train + test (rho, tau_F) cost-predictor (param_sweep -> model + selector eval)",
-    "big_env":        "Block #8: single FlexINA solve on the 15-, 20- and 25-switch envs (no time limit) + scaling plot",
+    # -- Model validation ---------------------------------------------------
+    "baseline":       "Block #1: baseline comparison (optimal vs FlexINA, 1-cluster env)",
+    # -- Single-factor sweeps -----------------------------------------------
+    "pct_2cluster":   "Block #2: switch percentage rho (2-cluster env)",
+    "pct_1cluster":   "Block #3: switch percentage rho (1-cluster env)",
+    "start_time":     "Block #4: start time tau_start experiment",
+    "time_window":    "Block #5: time window fraction experiment",
+    "worker_dist":    "Block #6: worker load distribution experiment",
+    "switch_memory":  "Block #7: switch memory (1/2/3 slots per switch, 1-cluster env)",
+    "topologies":     "Block #8: topology comparison (7sw tree, 5sw 1-cluster, 10sw 2-cluster)",
+    # -- Cross-algorithm comparison ------------------------------------------
+    "inart":          "Block #9: InArt vs FlexINA comparison (single-PS structural proxy, not full InArt algorithm)",
+    # -- Tuning pipeline ------------------------------------------------------
+    "param_sweep":    "Block #10: 2-D (rho x tau_F) sweep - heatmaps + trade-off scatter",
+    "rho_tau_model":  "Block #11: train + test (rho, tau_F) cost-predictor (param_sweep -> model + selector eval)",
+    # -- Scaling & ablations --------------------------------------------------
+    "big_env":        "Block #12: single FlexINA solve on the 15-, 20- and 25-switch envs (no time limit) + scaling plot",
+    "models":         "Block #13: model comparison - 4 formulations (inverted-ranking env, 2c-10sw-3f-sp)",
 }
 
 

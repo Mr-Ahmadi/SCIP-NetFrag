@@ -9,22 +9,16 @@ Usage from another script:
     num_active_frags, num_active_workers, slot_idx,
     per_worker_num_frags (optional; or pre-computed whist_* keys).
 
-The MLP has three heads: solve runtime and ILP packet count (the primary
-objective) as standardized log1p regressions, plus P(the solve hits the time
-limit). The selector minimizes ``w_runtime * pred_runtime_z + w_packets *
-pred_packets_z`` over the (rho, tau) grid, so the importance ratio
-w_runtime:w_packets is expressed in training-set std units: 'packets'
-objective == fewest packets (max aggregation gain), 'runtime' objective ==
-fastest solve.
+The MLP heads: standardized log(runtime + 1 ms) (see train.py for why not
+log1p), standardized log1p packets, and P(the solve hits the time limit).
+The selector minimizes ``w_runtime * z_rt + w_packets * z_pk`` over the
+(rho, tau) grid; weights are in training-set std units. Candidates whose
+predicted timeout probability exceeds `timeout_thresh` are skipped — the
+deployment-time replacement for a ground-truth feasibility mask; if every
+candidate is over threshold, the least-risky one is returned.
 
-Candidates whose predicted timeout probability exceeds `timeout_thresh` are
-skipped — that is the deployment-time replacement for a ground-truth
-feasibility mask. If every candidate is over threshold, the least-risky one is
-returned rather than failing.
-
-T_max_1/T_max_2 and ittr are NOT model inputs: the time window is a
-deterministic function of the chosen (slot_idx, tau) and ittr is a pure
-repetition index, so neither adds information the model can use.
+T_max_1/T_max_2 and ittr are NOT model inputs: both are deterministic of the
+chosen (slot_idx, tau), so neither adds usable information.
 """
 import json
 import os
@@ -35,12 +29,13 @@ import torch
 
 from blocks.rho_tau.train import (
     NUMERIC_FEATURES, WORKER_HIST_BINS, FEATURE_DIM, N_OUT, CostMLP,
+    RUNTIME_TRANSFORM, RUNTIME_EPS, rt_inv,
     build_feature_matrix, rows_to_dataframe, derived_features, worker_hist,
     _load_entropy,
 )
 
-# Resolve artéfacts relative to the implementation root so default
-# paths stay stable regardless of caller CWD.
+# Resolve artéfacts relative to the implementation root so default paths
+# stay stable regardless of caller CWD.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _IMPL_ROOT = os.path.dirname(os.path.dirname(_HERE)) or _HERE
 DEFAULT_MODEL = os.path.join(_IMPL_ROOT, "plots", "rho_tau_model.pt")
@@ -116,6 +111,10 @@ def load_model(model_path=DEFAULT_MODEL, features_path=DEFAULT_FEATURES,
         "worker_hist_bins": hist_bins,
         "rho_grid": rho_grid, "tau_grid": tau_grid,
         "target_stats": ck.get("target_stats"),
+        # Pre-transform checkpoints were trained on log1p; inverting with
+        # log/eps would be off by a factor of e.
+        "runtime_transform": ck.get("runtime_transform", "log1p"),
+        "runtime_eps": float(ck.get("runtime_eps", RUNTIME_EPS)),
         "n_out": n_out,
         "timeout_thresh": ck.get("timeout_thresh", 0.5),
         "censoring": ck.get("censoring"),
@@ -126,9 +125,8 @@ def load_model(model_path=DEFAULT_MODEL, features_path=DEFAULT_FEATURES,
 def _forward(model_pack, X, device="cpu", use_report=False):
     """Ensemble-averaged raw outputs, shape (n, n_out).
 
-    use_report=True scores with the report-only ensemble instead of the
-    selection ensemble (see train.py's --n_report_models). Falls back to the
-    selection ensemble if no report models were trained (older checkpoints).
+    use_report=True scores with the report-only ensemble (see train.py's
+    --n_report_models), falling back to the selection ensemble if none exist.
     """
     models = model_pack.get("models") or [model_pack["model"]]
     if use_report:
@@ -142,12 +140,9 @@ def _forward(model_pack, X, device="cpu", use_report=False):
 def predict_frame(df, model_pack, device="cpu", use_report=False):
     """Predict on a feature DataFrame; returns runtime (s), packets, P(timeout).
 
-    use_report=True: score with the independent report ensemble (see
-    _forward) instead of the selection ensemble. Use this to report a
-    prediction for a candidate that was itself chosen by an argmin search
-    over the selection ensemble's own output — scoring it with the same
-    ensemble that picked it is biased low (winner's curse); an ensemble that
-    never saw the competition isn't.
+    use_report=True scores with the independent report ensemble instead of
+    the selection ensemble: scoring a candidate with the same ensemble that
+    picked it via argmin is biased low (winner's curse).
     """
     numeric_features = model_pack.get("numeric_features", NUMERIC_FEATURES)
     hist_bins = int(model_pack.get("worker_hist_bins", WORKER_HIST_BINS))
@@ -166,7 +161,14 @@ def predict_frame(df, model_pack, device="cpu", use_report=False):
 
     ts = model_pack.get("target_stats") or {}
     mu_rt, sd_rt = ts.get("runtime", (0.0, 1.0))
-    runtime = np.maximum(np.expm1(np.clip(out[:, 0] * sd_rt + mu_rt, -5.0, 8.0)), 0.0)
+    tf = model_pack.get("runtime_transform", RUNTIME_TRANSFORM)
+    eps = float(model_pack.get("runtime_eps", RUNTIME_EPS))
+    # Clip in transformed space before inverting: the exp is what turns a
+    # 6-sigma excursion into 10^9 seconds. The lower bound never truncates a
+    # genuine cheap-corner prediction.
+    lo = -5.0 if tf == "log1p" else -9.0
+    runtime = rt_inv(np.clip(out[:, 0] * sd_rt + mu_rt, lo, 8.0),
+                     transform=tf, eps=eps)
     if out.shape[1] >= 2:
         mu_pk, sd_pk = ts.get("packets", (0.0, 1.0))
         packets = np.maximum(
@@ -205,33 +207,20 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
                    timeout_thresh=0.5, return_info=False):
     """Pick (rho*, tau*) minimizing the weighted objective over the grid.
 
-    score = w_runtime*z_runtime + w_packets*z_packets over standardized log1p
-    outputs; single-objective modes use w=(1,0)/(0,1).
+    score = w_runtime*z_runtime + w_packets*z_packets over standardized
+    outputs; single-objective modes use w=(1,0)/(0,1). Candidates with
+    P(timeout) > timeout_thresh are skipped; `feasibility` is a ground-truth
+    override, only for oracle-style analysis. If every candidate is filtered
+    out, the one with the lowest predicted timeout probability wins.
 
-    Candidates are filtered by the model's timeout head (P(timeout) >
-    timeout_thresh is skipped). `feasibility` — dict[(rho, tau)] -> 0/1 — is an
-    optional *ground-truth* override, so it must only be used for oracle-style
-    analysis, never as the deployment path. If every candidate is filtered out,
-    the one with the lowest predicted timeout probability wins.
-
-    The argmin itself (rho*, tau*) is always chosen from the selection
-    ensemble (`model_pack["models"]`) — the largest, best-tuned estimate
-    available. But once a winner is picked, its own selection-ensemble
-    prediction is a biased estimate of its true cost: it won specifically
-    because that ensemble happened to score it lowest among ~dozens of
-    candidates (winner's curse). If the checkpoint has a report ensemble
-    (train.py's --n_report_models, each trained on an independent bootstrap
-    resample of the training *state groups* — a same-data/different-seed
-    ensemble converges to nearly the same function and barely decorrelates
-    this — and never used in the argmin), `pred_runtime`/`pred_packets` are
-    instead scored by that independent ensemble at the winning (rho*, tau*):
-    an unbiased estimate, since it never competed to be picked. Falls back to
-    the selection ensemble's own (biased-low) number if no report ensemble
-    exists.
+    The argmin is always chosen from the selection ensemble, but its own
+    prediction for the winner is biased low (winner's curse: it won precisely
+    because that ensemble scored it lowest). If a bootstrap-resampled report
+    ensemble exists (--n_report_models), `pred_runtime`/`pred_packets` are
+    instead scored by it — unbiased, since it never competed to be picked.
 
     Returns (rho*, tau*, pred_rt_s, pred_packets), or a dict when
-    return_info=True. Old 1-/2-head checkpoints degrade gracefully: no timeout
-    filtering, and n_out=1 scores on runtime only.
+    return_info=True. Old 1-/2-head checkpoints degrade gracefully.
     """
     if model_pack is None:
         model_pack = load_model(device=device)
@@ -275,8 +264,7 @@ def select_rho_tau(state, model_pack=None, *, device="cpu",
         "all_blocked": bool(blocked.all()),
     }
     if model_pack.get("report_models"):
-        # Re-score just the winner with the independent report ensemble —
-        # unbiased, since it never took part in choosing this candidate.
+        # Re-score just the winner with the independent report ensemble.
         report_pred = predict_frame(df.iloc[[best]], model_pack, device=device,
                                     use_report=True)
         info["pred_runtime_selection_ensemble"] = float(pred["runtime"][best])

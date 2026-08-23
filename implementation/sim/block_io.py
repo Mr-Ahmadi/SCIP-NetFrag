@@ -19,8 +19,8 @@ XLEN_AGG = "max. per switch aggregation"
 XLEN_TOPOLOGY = "topology"
 XLEN_DISTRIBUTION = "worker distribution"
 XLEN_RHO = "ρ (switch selection %)"
-XLEN_TAU_START = "τ_F start (slots)"
-XLEN_TIME_WINDOW = "time window (%)"
+XLEN_TAU_START = "τ_F (slots)"
+XLEN_TIME_WINDOW = "τ_S (% of τ_F)"
 XLEN_TAU_WINDOW = "τ_F (time window)"
 XLEN_REDUCTION = "Packet reduction (1 − pkts/pkts₀)"
 XLEN_FRAGS = "number of fragments"
@@ -34,10 +34,15 @@ def pct_labels(percents):
 
 # Pretty x-axis labels for env_* functions.
 ENV_DISPLAY_NAMES = {
+    "env_tree_7sw_3f": "Tree (7sw)",
     "env_1c_3sw_4f": "1 Cluster (3sw)",
     "env_1c_5sw_2f": "1 Cluster (5sw, 2f)",
     "env_1c_5sw_3f": "1 Cluster (5sw)",
+    "env_1c_5sw_3f_2acc": "1 Cluster (5sw)",
+    "env_1c_5sw_3f_m2": "1 Cluster (5sw, 2 slots)",
+    "env_1c_5sw_3f_m3": "1 Cluster (5sw, 3 slots)",
     "env_2c_10sw_3f": "2 Clusters (10sw)",
+    "env_2c_10sw_3f_sparse": "2 Clusters (Sparse)",
     "env_2c_10sw_6f": "2 Clusters (6f)",
     "env_2c_10sw_8f": "2 Clusters (8f)",
     "env_2c_10sw_skew1": "2 Clusters (Zipf 2)",

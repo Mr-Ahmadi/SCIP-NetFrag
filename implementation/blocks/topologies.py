@@ -1,31 +1,40 @@
-"""Model comparison — the four formulations on the adverse-ranking environment.
+"""Block #8 — topology comparison across three fabrics.
 
-env_2c_10sw_3f_sparse is identical to env_2c_10sw_3f in topology, memory
-budget and load, but with the Phase-2 port-count ranking inverted, so the
-switches the heuristic would pick last are picked first.  Comparing the
-formulations here isolates how much of FlexINA's result depends on the
-ranking heuristic rather than on the formulation.
+Compares the four models on a 7-switch tree, the 5-switch single-cluster fat
+tree and the 10-switch two-cluster fat tree, holding rho, tau_F and the
+aggregation level fixed so that the only variable is the fabric.  Ported from
+``archive/Untitled.py`` (the env loop that produced Envs_Packets.pdf and
+Envs_Runtime.pdf).
 
-rho = 60%, tau_F = 8, aggregation levels 1-3, three repetitions, no solver
-time limit.
+Settings follow the archive run: rho = 60%, tau_F = 8, maximum aggregation
+level 2, three repetitions, no solver time limit.
 """
 from blocks._imports import (
-    BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4, LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS, XLEN_AGG, XLEN_FRAGS, XLEN_SLOTS, XLEN_TOPOLOGY, YLEN_FRAG, YLEN_RUNTIME, YLEN_RUNTIME_LOG, _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments, defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID,     defineModel_selectedSwitches, env_2c_10sw_3f_sparse, np, objective, plot_errorbar, plot_grouped_bars, plot_single_bars, preProcessMappingY, preProcessMappingZ, solveProblem, time,
+    BAR_WIDTH, BlockRun, LEGEND_BBOX_BARS, LEGEND_BBOX_LINE, LEGEND_NCOL_4,
+    LEGEND_SIZE, MODEL_COLORS, MODEL_HATCHES, MODEL_LABELS, MODEL_MARKERS,
+    XLEN_TOPOLOGY, YLEN_FRAG, YLEN_RUNTIME, YLEN_RUNTIME_LOG,
+    _prepare_dict_list, _unpack_env, apply_constraints, create_Fragments,
+    defineModel_ATP, defineModel_ATP_GRID, defineModel_GRID,
+    defineModel_selectedSwitches, env_1c_5sw_3f_2acc, env_2c_10sw_3f,
+    env_labels, env_tree_7sw_3f, np, objective, plot_errorbar,
+    plot_grouped_bars, preProcessMappingY, preProcessMappingZ, solveProblem,
+    time,
 )
 
-def run_models():
-    envs = [env_2c_10sw_3f_sparse]
+
+def run_topologies():
+    envs = [env_tree_7sw_3f, env_1c_5sw_3f_2acc, env_2c_10sw_3f]
     models = [defineModel_ATP, defineModel_GRID, defineModel_ATP_GRID,
               defineModel_selectedSwitches]
     model_labels = MODEL_LABELS
+    x_labels = env_labels(envs)
 
-    maxAggregate = 4
+    maxAggregate = 3
     ittrNum = 3
     percentage = 0.6
     solve_counter = 0
 
-    x_labels = [str(a) for a in range(1, maxAggregate)]
-    run = BlockRun("models", config={
+    run = BlockRun("topologies", config={
         "envs": [e.__name__ for e in envs],
         "models": [m.__name__ for m in models],
         "model_labels": model_labels,
@@ -34,18 +43,12 @@ def run_models():
         "percentage": percentage,
         "T_max_2_init": 8,
         "addTime_factor": 1.0,
-        # Synthetic scalability rows (hardcoded in the original block).
-        "scalability_tree": {
-            "labels": ["8", "16", "24"],
-            "runtime_s": [0.23863816261291504, 0.48981642723083496,
-                           0.5911757946014404]},
-        "scalability_fragments": {
-            "labels": ["8", "16", "24", "32", "40"],
-            "runtime_s": [0.23863816261291504, 0.48981642723083496,
-                           0.5911757946014404, 0.8037800788879395,
-                           1.414642095565796]},
-    }, axis={"x": XLEN_AGG, "y_fragments": YLEN_FRAG, "y_runtime": YLEN_RUNTIME,
-             "x_ticks": x_labels})
+        "x_labels": x_labels,
+        "note": ("Topology comparison at fixed rho / tau_F / aggregation "
+                 "level. env_tree_7sw_3f is non-clustered (clusters=[]), so "
+                 "Phase 2 applies filtration but not the cluster restriction."),
+    }, axis={"x": XLEN_TOPOLOGY, "y_fragments": YLEN_FRAG,
+             "y_runtime": YLEN_RUNTIME, "x_ticks": x_labels})
 
     errorRuntimesM = {}
     errorPacketsM = {}
@@ -56,13 +59,19 @@ def run_models():
         e: len(_prepare_dict_list(_unpack_env(e)[9], _unpack_env(e)[10]))
         for e in envs
     }
-    total_solves = (len(models) * len(envs) * (maxAggregate - 1)
+    total_solves = (len(models) * (maxAggregate - 2)
                     * ittrNum * sum(_solve_per_env.values()))
 
     block_start = time.time()
     for modelSolve in models:
         print(f"[{modelSolve.__name__}]")
+        numPackets2 = []
+        RuntimeTotal2 = []
+        errorRuntime = []
+        errorPackets = []
         for envTemp in envs:
+            errorRuntime.append([])
+            errorPackets.append([])
             (pSwitchesTopology, pSwitchPorts, neighborsofEachSwitch,
              pSwitchesNumber, numberSlotsSwitches, workersTopology,
              pWorkerPorts, workersNumber, numAllFrags,
@@ -70,14 +79,8 @@ def run_models():
              cutPorts, selectedSwitches, clusters) = _unpack_env(envTemp)
 
             dict_list = _prepare_dict_list(fragmentsofEachWorker, totalWorkers)
-            numPackets2 = []
-            RuntimeTotal2 = []
-            errorRuntime = []
-            errorPackets = []
-            for maxAggregation in range(1, maxAggregate):
-                errorRuntime.append([])
-                errorPackets.append([])
-                x_label = str(maxAggregation)
+            x_label = x_labels[envs.index(envTemp)]
+            for maxAggregation in range(2, maxAggregate):
                 for ittr in range(ittrNum):
                     T_max_1 = 0
                     T_max_2 = 8
@@ -139,12 +142,12 @@ def run_models():
                         construction_time_s=construction_total,
                         solve_time_s=solve_total,
                         status=",".join(statuses))
-                numPackets2.append(sum(avgPacket) / len(avgPacket))
-                RuntimeTotal2.append(sum(avgRuntime) / len(avgRuntime))
-            kindsofModelsPackets[modelSolve] = numPackets2
-            kindsofModelsRuntime[modelSolve] = RuntimeTotal2
-            errorRuntimesM[modelSolve] = errorRuntime
-            errorPacketsM[modelSolve] = errorPackets
+            numPackets2.append(sum(avgPacket) / len(avgPacket))
+            RuntimeTotal2.append(sum(avgRuntime) / len(avgRuntime))
+        errorRuntimesM[modelSolve] = errorRuntime
+        errorPacketsM[modelSolve] = errorPackets
+        kindsofModelsPackets[modelSolve] = numPackets2
+        kindsofModelsRuntime[modelSolve] = RuntimeTotal2
 
     print(f"  done in {time.time() - block_start:.1f}s")
     print("Packets:", kindsofModelsPackets)
@@ -160,8 +163,8 @@ def run_models():
     C_5 = kindsofModelsPackets[defineModel_selectedSwitches]
 
     plot_grouped_bars(x_labels, [C_2, C_3, C_4, C_5], MODEL_LABELS,
-                      YLEN_FRAG, XLEN_AGG,
-                      "plots/models_fragments.pdf",
+                      YLEN_FRAG, XLEN_TOPOLOGY,
+                      "plots/topologies_fragments.pdf",
                       color_indices=MODEL_COLORS, hatch_list=MODEL_HATCHES,
                       width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
                       legend_ncol=LEGEND_NCOL_4, legend_size=LEGEND_SIZE)
@@ -170,48 +173,31 @@ def run_models():
     y3 = kindsofModelsRuntime[defineModel_GRID]
     y4 = kindsofModelsRuntime[defineModel_ATP_GRID]
     y5 = kindsofModelsRuntime[defineModel_selectedSwitches]
+
+    plot_grouped_bars(x_labels, [y2, y3, y4, y5], MODEL_LABELS,
+                      YLEN_RUNTIME_LOG, XLEN_TOPOLOGY,
+                      "plots/topologies_runtime.pdf",
+                      color_indices=MODEL_COLORS, hatch_list=MODEL_HATCHES,
+                      width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
+                      legend_ncol=LEGEND_NCOL_4, legend_size=LEGEND_SIZE,
+                      log_scale=True)
+
     e2 = [np.std(vals) for vals in errorRuntimesM[defineModel_ATP]]
     e3 = [np.std(vals) for vals in errorRuntimesM[defineModel_GRID]]
     e4 = [np.std(vals) for vals in errorRuntimesM[defineModel_ATP_GRID]]
     e5 = [np.std(vals) for vals in errorRuntimesM[defineModel_selectedSwitches]]
     plot_errorbar(x_labels, [y2, y3, y4, y5], [e2, e3, e4, e5],
-                  MODEL_LABELS, YLEN_RUNTIME, XLEN_AGG,
-                  "plots/models_runtime_errorbar.pdf",
+                  MODEL_LABELS, YLEN_RUNTIME, XLEN_TOPOLOGY,
+                  "plots/topologies_runtime_errorbar.pdf",
                   fmt_list=MODEL_MARKERS, color_indices=MODEL_COLORS,
                   legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
 
-    plot_grouped_bars(x_labels, [C_2, C_3, C_4, C_5], MODEL_LABELS,
-                      YLEN_FRAG, XLEN_SLOTS,
-                      "plots/models_fragments_vs_slots.pdf",
-                      color_indices=MODEL_COLORS, hatch_list=MODEL_HATCHES,
-                      width=BAR_WIDTH, legend_bbox=LEGEND_BBOX_BARS,
-                      legend_ncol=LEGEND_NCOL_4, legend_size=LEGEND_SIZE)
-    plot_errorbar(x_labels, [y2, y3, y4, y5], [e2, e3, e4, e5],
-                  MODEL_LABELS, YLEN_RUNTIME, XLEN_SLOTS,
-                  "plots/models_runtime_vs_slots_errorbar.pdf",
-                  fmt_list=MODEL_MARKERS, color_indices=MODEL_COLORS,
-                  legend_bbox=LEGEND_BBOX_LINE, legend_size=LEGEND_SIZE)
-
-    tree_cfg = run.config["scalability_tree"]
-    plot_single_bars(tree_cfg["labels"], tree_cfg["runtime_s"],
-                    YLEN_RUNTIME, XLEN_FRAGS,
-                    "plots/models_scalability_tree.pdf",
-                    color_index=4, hatch='/')
-    frag_cfg = run.config["scalability_fragments"]
-    plot_single_bars(frag_cfg["labels"], frag_cfg["runtime_s"],
-                    YLEN_RUNTIME, XLEN_FRAGS,
-                    "plots/models_scalability_fragments.pdf",
-                    color_index=9, hatch='.')
-
-    summary = run.summary(
-        x_labels, series_order=MODEL_LABELS,
-        y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME, x_label=XLEN_AGG)
-    run.save("plots/models_data.json", extra={"summary": summary,
-                                              "plot_files": [
-        "plots/models_fragments.pdf",
-        "plots/models_runtime_errorbar.pdf",
-        "plots/models_fragments_vs_slots.pdf",
-        "plots/models_runtime_vs_slots_errorbar.pdf",
-        "plots/models_scalability_tree.pdf",
-        "plots/models_scalability_fragments.pdf",
+    summary = run.summary(x_labels, series_order=MODEL_LABELS,
+                          y_fragments=YLEN_FRAG, y_runtime=YLEN_RUNTIME,
+                          x_label=XLEN_TOPOLOGY)
+    run.save("plots/topologies_data.json", extra={"summary": summary,
+                                                  "plot_files": [
+        "plots/topologies_fragments.pdf",
+        "plots/topologies_runtime.pdf",
+        "plots/topologies_runtime_errorbar.pdf",
     ]})

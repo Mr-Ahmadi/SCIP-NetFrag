@@ -3,14 +3,22 @@ Environment (network topology + load) definitions.
 
 Naming: env_<clusters>c_<switches>sw_<load> where <load> is <n>f for
 uniform n fragments/worker, or uneven/skew1/skew15 for non-uniform.
+A trailing _m<n> marks a switch-memory variant (n slots on the aggregation
+and spine switches); env_tree_7sw_3f is the one non-clustered topology and
+keeps its descriptive name.
 """
 from ._common import build_env, optimize_env
 
 from .env_1c_5sw_3f import env_1c_5sw_3f
+from .env_1c_5sw_3f_2acc import env_1c_5sw_3f_2acc
+from .env_1c_5sw_3f_m2 import env_1c_5sw_3f_m2
+from .env_1c_5sw_3f_m3 import env_1c_5sw_3f_m3
 from .env_1c_5sw_2f import env_1c_5sw_2f
 from .env_1c_3sw_4f import env_1c_3sw_4f
+from .env_tree_7sw_3f import env_tree_7sw_3f
 
 from .env_2c_10sw_3f import env_2c_10sw_3f
+from .env_2c_10sw_3f_sparse import env_2c_10sw_3f_sparse
 from .env_2c_10sw_6f import env_2c_10sw_6f
 from .env_2c_10sw_8f import env_2c_10sw_8f
 from .env_2c_10sw_uneven import env_2c_10sw_uneven
@@ -26,9 +34,14 @@ from .env_6c_30sw_4f import env_6c_30sw_4f
 __all__ = [
     "build_env", "optimize_env",
     "env_1c_5sw_3f",
+    "env_1c_5sw_3f_2acc",
+    "env_1c_5sw_3f_m2",
+    "env_1c_5sw_3f_m3",
     "env_1c_5sw_2f",
     "env_1c_3sw_4f",
+    "env_tree_7sw_3f",
     "env_2c_10sw_3f",
+    "env_2c_10sw_3f_sparse",
     "env_2c_10sw_6f",
     "env_2c_10sw_8f",
     "env_2c_10sw_uneven",

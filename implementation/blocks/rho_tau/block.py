@@ -62,10 +62,7 @@ def _train_with_args(data, out_model, out_eval, out_features, *,
 
 
 def _load_per_solve(path):
-    """Read per_solve rows from run_param_sweep output.
-
-    Returns ([], None) if the JSON is missing or has no per-solve rows.
-    """
+    """Read per_solve rows from run_param_sweep output ([] if unavailable)."""
     if not os.path.exists(path):
         return [], None
     with open(path) as f:
@@ -79,24 +76,17 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
                       timeout_thresh=0.5, oracle_feasibility=False):
     """Evaluate the selector on every unique state in the per-solve data.
 
-    oracle_feasibility=False is the deployment path: infeasible (rho, tau)
-    pairs are ruled out by the model's own timeout head, never by ground-truth
-    statuses. Passing True leaks the statuses and only serves as an upper
-    bound on achievable quality.
-
-    A pick that times out is scored with its *real* observed cost (the timeout
-    wall-clock and the best-effort incumbent packet count), not discarded — the
-    pipeline ships that solution, so it belongs in the regret.
-
-    objective/weights must match the trained config (see module constants
-    OBJECTIVE / W_RUNTIME / W_PACKETS in run_rho_tau_model).
+    oracle_feasibility=False is the deployment path (infeasible pairs ruled
+    out by the model's timeout head); True leaks ground-truth statuses and
+    only serves as an upper bound. A pick that times out is scored with its
+    real observed cost — the pipeline ships that solution, so it belongs in
+    the regret. objective/weights must match the trained config.
     """
     if not per_solve_rows:
         return []
 
-    # Group by observable pre-choice state. T_max_1/T_max_2 are deterministic
-    # of tau; ittr stays a grouping key so each repetition is an independent
-    # regret sample.
+    # Group by observable pre-choice state; ittr stays a grouping key so each
+    # repetition is an independent regret sample.
     state_cols = ["env", "ittr", "slot_idx",
                   "num_active_frags", "num_active_workers"]
     buckets = {}
@@ -107,8 +97,7 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
     out = []
     for key, rs in buckets.items():
         # Oracle runtime over solves that finished; oracle packets over any
-        # solve that produced a primal solution (a censored incumbent is still
-        # a shippable result).
+        # solve with a primal solution (a censored incumbent is shippable).
         ok = [r for r in rs if r["status"] == "optimal"]
         primal = [r for r in rs if r["packets"]]
         if not ok or not primal:
@@ -118,10 +107,8 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
         best_pk = min(primal, key=lambda r: r["packets"])
         worst_pk = max(primal, key=lambda r: r["packets"])
 
-        # State from the first row of the group. Carries every numeric feature
-        # the model was trained on (incl. the constant-per-env topology
-        # descriptors); keys absent from older param_sweep data are skipped so
-        # `_complete_state` defaults them to 0, matching training on old rows.
+        # State from the first row of the group; keys absent from older
+        # param_sweep data are skipped so `_complete_state` defaults them to 0.
         first = rs[0]
         state = {c: float(first[c]) for c in model_pack["numeric_features"]
                  if c not in ("rho", "tau") and c in first}
@@ -211,15 +198,11 @@ def _plot_pred_vs_actual(qualities, path, *, kind="runtime", log_scale=False,
                          held_out=None):
     """Scatter: predicted vs observed target for the selected (rho, tau).
 
-    `pred_*` here is already the report-ensemble (de-biased) estimate — see
-    predict.select_rho_tau — but a handful of states still land near the
-    grid's cheapest corner (smallest rho/tau), where predicted values span
-    several orders of magnitude down to ~0. log_scale makes that legible
-    instead of piling everything up against the linear-scale origin. The
-    annotation quotes the held-out regression metrics (`held_out`, from the
-    eval report, over every grid cell of the validation states) — the same
-    numbers the model is reported with — because R² computed over just the
-    argmin picks is a pessimistically-biased subset (winner's curse).
+    `pred_*` is the report-ensemble (de-biased) estimate. log_scale makes the
+    cheap corner (predictions down to ~0) legible instead of piling everything
+    up against the linear-scale origin. The annotation quotes the held-out
+    regression metrics when available — R^2 over just the argmin picks is a
+    pessimistically-biased subset (winner's curse).
     """
     pkey = "pred_runtime" if kind == "runtime" else "pred_packets"
     ckey = "chosen_runtime" if kind == "runtime" else "chosen_packets"
@@ -245,20 +228,20 @@ def _plot_pred_vs_actual(qualities, path, *, kind="runtime", log_scale=False,
         ax.plot([lo, hi], [lo, hi], ls="--", color="gray", lw=1,
                 label="pred = actual")
     if log_scale:
-        # symlog, not log: several predictions are genuinely ~0 (the model
-        # is confident these configs are essentially free), and a hard log
-        # floor would clip them all onto one artificial vertical line. symlog
-        # keeps a linear region near 0 so those points stay distinguishable.
+        # symlog, not log: several predictions are genuinely ~0 and a hard
+        # log floor would clip them onto one artificial vertical line.
         lin_thresh = max(1e-3, min(v for v in all_v if v > 0) / 2) if all_v else 1e-3
         ax.set_xscale("symlog", linthresh=lin_thresh)
         ax.set_yscale("symlog", linthresh=lin_thresh)
     # honest accuracy annotation: held-out regression from the eval report
-    # when available (same numbers the model is reported with), else computed
-    # on the picks themselves
+    # when available, else computed on the picks themselves
     if held_out is not None and kind in held_out:
         h = held_out[kind]
         n = int(h.get("n", "?"))
-        r2 = float(h["r2_log1p"] if kind == "runtime" else h["r2"])
+        # r2_log is the current key; r2_log1p is what pre-transform eval
+        # reports called it.
+        r2 = float((h.get("r2_log", h.get("r2_log1p"))) if kind == "runtime"
+                   else h["r2"])
         rho = float(h.get("spearman", float("nan")))
         if kind == "runtime":
             mae = float(h.get("mae_s"))
@@ -271,7 +254,7 @@ def _plot_pred_vs_actual(qualities, path, *, kind="runtime", log_scale=False,
                    f"Spearman = {rho:.3f}")
     else:
         if kind == "runtime":
-            tx, ty = np.log1p(xs), np.log1p(ys)
+            tx, ty = _rt_fwd(xs), _rt_fwd(ys)
             mae = float(np.abs(xs - ys).mean())
         else:
             tx, ty = xs, ys
@@ -304,31 +287,51 @@ def _plot_pred_vs_actual(qualities, path, *, kind="runtime", log_scale=False,
     save_fig(fig, path)
 
 
-def _plot_regression_accuracy(df, pred, path, *, kind="runtime", log_scale=False):
+def _rt_fwd(v):
+    """The space runtime R^2 is scored in — the head's own target space."""
+    from blocks.rho_tau.train import rt_fwd
+    return rt_fwd(v)
+
+
+def _scored_masks(df):
+    """The rows each regression head is actually supervised on.
+
+    Mirrors train.py's target masks. Under censoring='drop' a `timelimit`
+    row carries no usable label on either axis.
+    """
+    optimal = (df["status"] == "optimal").values
+    has_pk = (df["packets"] > 0).values
+    return optimal, (has_pk & optimal if CENSORING == "drop" else has_pk)
+
+
+def _plot_regression_accuracy(df, pred, path, *, kind="runtime",
+                              log_scale=False, split=None):
     """Scatter: predicted vs observed target over every scored row.
 
-    `_plot_pred_vs_actual` only shows the selector's *chosen* (rho, tau) per
-    state — the argmin of ~60 noisy candidates, which is systematically
-    biased low (winner's curse) and only has as many points as there are
-    distinct states (tens, not thousands). This plots the regressor's raw
-    accuracy on every row it was ever scored against, which is the honest
-    answer to "is the model accurate."
+    Unlike `_plot_pred_vs_actual` (argmin picks only, winner's-curse-biased),
+    this shows the regressor's raw accuracy on every row it was scored
+    against — the honest answer to "is the model accurate".
     """
+    m_rt, m_pk = _scored_masks(df)
     if kind == "runtime":
-        mask = (df["status"] == "optimal").values
-        y = df["runtime"].values[mask]
-        unit = " (s)"
+        mask, y, unit = m_rt, df["runtime"].values[m_rt], " (s)"
     else:
-        mask = (df["packets"] > 0).values
-        y = df["packets"].values[mask]
-        unit = ""
+        mask, y, unit = m_pk, df["packets"].values[m_pk], ""
     x = pred[kind][mask]
     if len(x) == 0:
         return
+    # Score only held-out rows (training rows would flatter the model; the
+    # argmin picks would libel it).
+    scored = (np.asarray(split)[mask] == "val") if split is not None \
+        else np.ones(len(x), bool)
+    if scored.sum() < 2:
+        scored = np.ones(len(x), bool)
+    x, y = x[scored], y[scored]
+    env_all = df["env"].values[mask][scored]
     s = apply_plot_style()
     cmap = sns.color_palette(style.palette)
     fig, ax = new_fig()
-    env_arr = df["env"].values[mask]
+    env_arr = env_all
     envs = sorted(set(env_arr))
     for i, e in enumerate(envs):
         sel = env_arr == e
@@ -341,16 +344,51 @@ def _plot_regression_accuracy(df, pred, path, *, kind="runtime", log_scale=False
         ax.set_xscale("log")
         ax.set_yscale("log")
     ax.plot([lo, hi], [lo, hi], ls="--", color="gray", lw=1, label="pred = actual")
+    tx, ty = ((_rt_fwd(x), _rt_fwd(y)) if kind == "runtime" else (x, y))
+    r2 = 1 - np.sum((tx - ty) ** 2) / np.sum((ty - ty.mean()) ** 2)
+    rx = np.argsort(np.argsort(tx)).astype(float)
+    ry = np.argsort(np.argsort(ty)).astype(float)
+    ax.text(0.03, 0.97,
+            (f"held-out (n={len(x)})\n"
+             f"R$^2$ {'(log) ' if kind == 'runtime' else ''}= {r2:.3f}\n"
+             f"Spearman = {float(np.corrcoef(rx, ry)[0, 1]):.3f}"),
+            transform=ax.transAxes, va="top", ha="left", fontsize=LEGEND_SIZE,
+            bbox=dict(boxstyle="round,pad=0.35", fc="white", ec="0.75",
+                      lw=0.8, alpha=0.9))
     ax.set_xlabel(f"predicted {kind}{unit}", fontsize=s.label_size)
     ax.set_ylabel(f"observed {kind}{unit}", fontsize=s.label_size)
     ax.set_title(f"Regression accuracy: predicted vs observed {kind} "
-                 f"(all rows, n={len(x)})", fontsize=s.title_size)
+                 f"(held-out rows, n={len(x)})", fontsize=s.title_size)
     plot_legend(ax, loc="lower right",
                 ncol=min(LEGEND_NCOL_2, len(envs) + 1), fontsize=LEGEND_SIZE)
     plot_grid(ax, axis="both")
     fmt_axis(ax, axis="both")
     fig.tight_layout()
     save_fig(fig, path)
+
+
+def _regression_rows(df, pred, split):
+    """Per-row predicted/observed pairs behind the regression-accuracy figures.
+
+    Stored columnwise so replot.py can redraw the figures from the block JSON
+    (the argmin picks alone give a near-meaningless R^2). A row-per-dict
+    layout costs ~6x the bytes for the same numbers.
+    """
+    ok_rt, ok_pk = _scored_masks(df)
+
+    def col(values, mask):
+        return [(float(f"{v:.6g}") if m else None)
+                for v, m in zip(values, mask)]
+
+    return {
+        "n": int(len(df)),
+        "env": [str(e) for e in df["env"].values],
+        "split": list(split),
+        "pred_runtime": col(pred["runtime"], ok_rt),
+        "runtime": col(df["runtime"].values, ok_rt),
+        "pred_packets": col(pred["packets"], ok_pk),
+        "packets": col(df["packets"].values, ok_pk),
+    }
 
 
 def _summarize(qualities):
@@ -379,21 +417,14 @@ def _summarize(qualities):
     }
 
 
-# Selector objective for the multi-output cost-predictor:
-#   'runtime'  -> minimize predicted solve time only
-#   'packets'  -> minimize predicted packet count (max aggregation gain) only
-#   'tradeoff' -> minimize w_runtime*z_rt + w_packets*z_pk (z = training-set
-#                 std units, so the ratio is directly interpretable)
+# Selector objective: 'runtime' / 'packets' / 'tradeoff' (weighted z-score
+# sum, so the ratio is directly interpretable).
 OBJECTIVE = "tradeoff"
 W_RUNTIME = 1.0
 W_PACKETS = 1.0
 
-# How `timelimit` rows are labelled: 'drop' (regressions ignore them, the
-# timeout head still learns from them — empirically the best held-out runtime
-# accuracy, see blocks/rho_tau/train.py docstring), 'censored' (runtime is a
-# one-sided lower-bound hinge, packets is the real incumbent — theoretically
-# tidier but measurably worse on this data), or 'penalty' (legacy constant
-# labels — wrong on both axes, kept only for comparison).
+# How `timelimit` rows are labelled; 'drop' is the empirically best default
+# (see blocks/rho_tau/train.py docstring).
 CENSORING = "drop"
 # Candidates whose predicted P(timeout) exceeds this are skipped by the selector.
 TIMEOUT_THRESH = 0.5
@@ -425,8 +456,10 @@ def run_rho_tau_model():
     seed = 5
     test_env = None
     device = None
-    low_w = 3.0
-    w_cheap = 2.0
+    # Cheap-corner loss reweighting, off: the log(y + 1 ms) target made it
+    # pointless (see train.train's docstring).
+    low_w = 0.0
+    w_cheap = 0.0
     cheap_thresh = 0.5
 
     run = BlockRun("rho_tau_model", config={
@@ -538,16 +571,24 @@ def run_rho_tau_model():
         plot_files.append(plot_pred_vs_act_pk)
 
     # Regression accuracy over every scored row (not just the selector's
-    # picks) — the honest view of model accuracy; see _plot_regression_accuracy.
+    # picks) — see _plot_regression_accuracy.
     from blocks.rho_tau import train as trm
     df_all = trm.rows_to_dataframe(per_solve_rows).reset_index(drop=True)
     pred_all = prd.predict_frame(df_all, model_pack, device=(device or "cpu"))
+    # Replay train.py's (val_frac, seed)-deterministic split to recover the
+    # exact partition the eval report was computed over.
+    _, val_df = trm._group_split(df_all, val_frac, seed)
+    keys = df_all[trm.STATE_COLS].astype(str).agg("|".join, axis=1)
+    val_keys = set(val_df[trm.STATE_COLS].astype(str).agg("|".join, axis=1))
+    split_all = np.where(keys.isin(val_keys), "val", "train")
+
     _plot_regression_accuracy(df_all, pred_all, plot_reg_acc,
-                              kind="runtime", log_scale=True)
+                              kind="runtime", log_scale=True, split=split_all)
     plot_files.append(plot_reg_acc)
     _plot_regression_accuracy(df_all, pred_all, plot_reg_acc_pk,
-                              kind="packets", log_scale=False)
+                              kind="packets", log_scale=False, split=split_all)
     plot_files.append(plot_reg_acc_pk)
+    regression_rows = _regression_rows(df_all, pred_all, split_all)
 
     summary = _summarize(qualities)
     summary["training_time_s"] = float(train_time)
@@ -563,6 +604,7 @@ def run_rho_tau_model():
         "summary": summary,
         "per_state_quality": qualities,
         "per_state_quality_oracle_feasibility": qualities_oracle,
+        "regression_rows": regression_rows,
         "plot_files": plot_files,
         "block_runtime_s": time.time() - block_start,
     })

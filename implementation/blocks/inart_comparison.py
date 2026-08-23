@@ -6,8 +6,8 @@ from blocks._imports import (
     LEGEND_SIZE, XLEN_TOPOLOGY, YLEN_FRAG, YLEN_RUNTIME, env_labels,
     _prepare_dict_list, _unpack_env, apply_constraints,
     apply_constraints_InArt, apply_plot_style,
-    env_2c_10sw_3f, env_2c_10sw_uneven, env_3c_14sw_4f,
-    env_2c_10sw_skew15, fmt_axis, new_fig, np, plot_errorbar, plot_grid,
+    env_2c_10sw_3f, env_2c_10sw_3f_sparse, env_2c_10sw_6f,
+    env_2c_10sw_uneven, fmt_axis, new_fig, np, plot_errorbar, plot_grid,
     plot_grouped_bars, plot_legend, plt,
     save_fig, sns, style, time,
 )
@@ -21,20 +21,24 @@ MODEL_VARIANTS = [
 
 
 def run_inart_comparison():
-    """
-    InArt vs FlexINA across multiple topologies.
-    """
+    """InArt vs FlexINA across multiple topologies."""
     envs = [
         env_2c_10sw_3f,
+        env_2c_10sw_3f_sparse,
         env_2c_10sw_uneven,
-        env_2c_10sw_skew15,
-        env_3c_14sw_4f,
+        env_2c_10sw_6f,
     ]
     x_labels = env_labels(envs)
 
     # max-agg 2 ties both models on these envs; max-agg 3 is where chaining
-    # separates them. Envs chosen for proven optimality without time limits
-    # (env_1c_5sw_3f was dropped: its first slot hit the per-solve limit).
+    # separates them.
+    #
+    # Env choice: chaining pays off only where the filtered switch set
+    # (first rho fraction of selectedSwitches) contains >= 2 memory-equipped
+    # switches on a worker->PS path. These four satisfy that and all solve to
+    # proven optimality within SOLVE_TIMEOUT_S. Envs excluded for tying:
+    # skew15 / 1c_3sw_4f / skew1 (too few fragments survive Phase 1) and
+    # 3c_14sw_4f (cores 10, 11 carry no aggregation memory).
     MAX_AGGREGATION = 3
     ittrNum = 3
     # Equal ρ for both — same candidate-switch set.

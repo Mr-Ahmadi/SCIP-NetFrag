@@ -38,10 +38,8 @@ def env_3c_14sw_4f(state):
     }
 
     clusters = {0: [0, 1, 2, 3], 1: [4, 5, 6, 7], 2: [8, 9, 12, 13]}
-    # Archive ordering convention (cf. env_2c_10sw_*: [2,3,6,7, 8,9, 0,1,4,5]):
-    # per-cluster aggregation switches first, then the PS-facing core, then
-    # ToRs. Port-count ranking would put the ToRs first and starve FlexINA of
-    # aggregation switches at low rho.
+    # Archive ordering convention: aggregation switches first, then the
+    # PS-facing cores, then ToRs (port-count ranking would starve FlexINA).
     selectedSwitches = [2, 3, 6, 7, 12, 13, 10, 11, 0, 1, 4, 5, 8, 9]
 
     cutPorts = {
@@ -93,10 +91,8 @@ def env_3c_14sw_4f(state):
                              221: ["AA", "BA", "CA", "DA"],
                              222: ["AB", "BB", "CB", "DB"]}
 
-    # Hops from each worker to each switch, indexed by switch id (a worker's
-    # own ToR is 1), derived by BFS over pSwitchesTopology — same convention
-    # as the archive envs. A flat [1]*n table would disable the arrival-time
-    # pruning in defineModel*/_z_group_infeasible entirely.
+    # Hops from each worker to each switch (own ToR = 1), BFS-derived; a
+    # flat [1]*n table would disable arrival-time pruning in the models.
     stepsToSwitches = {
         211: [1, 3, 2, 2, 5, 5, 4, 4, 5, 5, 3, 3, 4, 4],
         212: [1, 3, 2, 2, 5, 5, 4, 4, 5, 5, 3, 3, 4, 4],

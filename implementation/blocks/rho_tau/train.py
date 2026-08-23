@@ -1,50 +1,22 @@
 """
 Offline training of a (rho, tau_F) selector from param_sweep data.
 
-Censoring
----------
-A `timelimit` row is NOT a failure and NOT a normal observation: the solver hit
-`timeout_per_solve` and returned its best-effort incumbent. That means
-
-  * runtime is **right-censored** — the true solve time is >= the timeout, we
-    only know a lower bound;
-  * packets is **fully observed** — the incumbent is the packet count the
-    pipeline would actually ship for that (rho, tau) under that time budget
-    (`sim/solver.py` keeps best-effort primal solutions), so it is a real label.
-
+A `timelimit` row has right-censored runtime (true solve time >= timeout) but
+a fully-observed packet label (the best-effort incumbent is shippable).
 `--censoring` picks how those rows are used:
 
-  drop (default)     : rows are excluded from both regressions but still train
-                       the timeout head (the one thing they unambiguously say).
-  censored            : runtime gets a one-sided hinge (only underprediction is
-                       penalized, so the model learns ">= timeout" without
-                       inventing a value), packets trains normally, and every
-                       row feeds a timeout-probability head.
-  penalty            : legacy behaviour — overwrite both targets with a
-                       constant penalty. Kept only for comparison; it labels
-                       censored rows with a runtime *below* the observed
-                       timeout and a packet count *worse* than the one actually
-                       achieved, i.e. it contradicts the data on both axes.
+  drop (default) : excluded from both regressions; still train the timeout
+                   head. Empirically the best held-out accuracy on this data.
+  censored       : runtime gets a one-sided hinge, packets trains normally.
+  penalty        : legacy constant labels; kept only for comparison.
 
-`censored` looks better-founded on paper (it lets the ~10% of rows that hit
-the time limit still contribute a lower bound instead of throwing them away),
-but a two-seed ablation on this dataset (`--seed 7` and `--seed 3`, everything
-else equal) shows it *costs* held-out accuracy: val runtime r2_log1p
-0.924/0.943 (censored) vs. 0.951/0.957 (drop), val runtime mae_s 6.49/2.66 vs.
-3.45/1.97 — packets and the timeout head are roughly a wash either way (the
-timeout head trains on every row's status regardless of `--censoring`, so
-switching policy costs it nothing). The one-sided hinge, even at the tuned
-`--w_censor 0.1`, still drags the shared trunk's runtime head upward for rows
-that *did* finish, because gradients from the ~200 censored rows and the
-~1800 finished rows land on the same parameters. `drop` is the default
-because it wins on data, not just simplicity; pass `--censoring censored`
-only if you have a reason to trade that accuracy for keeping the lower-bound
-signal (e.g. the timeout region itself is under-sampled).
-
-The model has three heads: standardized log1p runtime, standardized log1p
-packets, and a timeout logit. The timeout head is what lets the selector avoid
-infeasible (rho, tau) regions at inference time without peeking at ground-truth
-statuses.
+The model has three heads: standardized log-runtime, standardized log1p
+packets, and a timeout logit. The runtime head regresses
+``log(runtime + RUNTIME_EPS)`` rather than ``log1p``: solve times never reach
+0, so log1p would compress the cheap-solve regime into ~2% of the target
+range and floor its inverse at exactly 0.0; a millisecond eps keeps the
+inverse strictly positive with no tail cost. The timeout head lets the
+selector avoid infeasible (rho, tau) regions without ground-truth statuses.
 """
 import argparse
 import json
@@ -57,6 +29,29 @@ import torch
 import torch.nn as nn
 
 from blocks.rho_tau.topo_features import TOPOLOGY_FEATURES
+
+# log(y + eps) target, not log1p — see module docstring. Written into the
+# checkpoint as `runtime_transform` so predict.py inverts whatever a given
+# model was trained with (checkpoints without the key are log1p).
+RUNTIME_TRANSFORM = "log_eps"
+RUNTIME_EPS = 1e-3
+
+
+def rt_fwd(y, transform=RUNTIME_TRANSFORM, eps=RUNTIME_EPS):
+    """Raw seconds -> the space the runtime head regresses in."""
+    y = np.asarray(y, dtype=np.float64)
+    if transform == "log1p":
+        return np.log1p(y)
+    return np.log(np.maximum(y, 0.0) + eps)
+
+
+def rt_inv(t, transform=RUNTIME_TRANSFORM, eps=RUNTIME_EPS):
+    """Inverse of `rt_fwd`, clamped at 0 (never negative seconds)."""
+    t = np.asarray(t, dtype=np.float64)
+    if transform == "log1p":
+        return np.maximum(np.expm1(t), 0.0)
+    return np.maximum(np.exp(t) - eps, 0.0)
+
 
 
 NUMERIC_FEATURES = [
@@ -80,23 +75,20 @@ NUMERIC_FEATURES = [
     "space_log",            # log1p(sel_switches * tau * num_active_frags)
     "frags_per_worker",     # num_active_frags / num_active_workers
 ]
-# Topology descriptors (constant per env, from the collapsed env tuple) so
-# connectivity-distinct envs stay separable even where per-solve load stats
-# coincide; see topo_features.py.
+# Topology descriptors (constant per env) so connectivity-distinct envs stay
+# separable even where per-solve load stats coincide; see topo_features.py.
 NUMERIC_FEATURES += TOPOLOGY_FEATURES
 
 # Deliberately NOT features: T_max_1/T_max_2 (deterministic of slot_idx/tau)
-# and ittr (pure repetition index). ittr stays as a row/grouping key for
-# per-iteration regret samples but is never fed to the model.
+# and ittr (pure repetition index; kept only as a grouping key).
 
 # Per-worker histogram bins (capped for unseen topologies).
 WORKER_HIST_BINS = 8
 
 FEATURE_DIM = len(NUMERIC_FEATURES) + WORKER_HIST_BINS
 
-# One state = one solver invocation context; every (rho, tau) cell of a state is
-# a candidate for the same decision. Splits must keep a state intact, otherwise
-# validation is memorization of its siblings.
+# One state = one solver invocation context; splits must keep a state
+# intact, otherwise validation is memorization of its siblings.
 STATE_COLS = ["env", "ittr", "slot_idx"]
 
 N_OUT = 3  # [runtime_z, packets_z, timeout_logit]
@@ -197,9 +189,8 @@ def build_feature_matrix(df, feature_stats=None, fit_stats=False,
 class CostMLP(nn.Module):
     """Multi-head cost predictor.
 
-    Outputs [runtime_z, packets_z, timeout_logit]: the first two are
-    standardized log1p regressions, the third a logit for P(solve hits the time
-    limit). n_out is read from the checkpoint so 1-/2-output models still load.
+    Outputs [runtime_z, packets_z, timeout_logit]. n_out is read from the
+    checkpoint so 1-/2-output models still load.
     """
     def __init__(self, in_dim=FEATURE_DIM, hidden=128, n_layers=3, dropout=0.1,
                  n_out=N_OUT):
@@ -240,8 +231,7 @@ def _targets(df, *, censoring="censored", penalty_stats=None):
             "censoring": censoring}
 
     if censoring == "penalty":
-        # Legacy: invent a constant label for both axes. Documented as wrong;
-        # kept so the comparison can be reproduced.
+        # Legacy: invent a constant label for both axes (documented as wrong).
         if penalty_stats is None:
             ok_rt = runtime[~is_to]
             ok_pk = packets[~is_to]
@@ -263,8 +253,8 @@ def _targets(df, *, censoring="censored", penalty_stats=None):
         m_rt = (~is_to).astype(np.float32)
         m_pk = ((~is_to) & has_primal).astype(np.float32)
         if censoring == "censored":
-            # Censored rows: runtime is a lower bound (hinge), packets is the
-            # incumbent the pipeline would actually ship -> a real label.
+            # Censored rows: runtime is a lower bound (hinge), packets the
+            # shippable incumbent -> a real label.
             m_cens = is_to.astype(np.float32)
             m_pk = np.maximum(m_pk, (is_to & has_primal).astype(np.float32))
         elif censoring == "drop":
@@ -284,13 +274,12 @@ def _targets(df, *, censoring="censored", penalty_stats=None):
 
 
 def _fit_target_stats(t_tr):
-    """Z-score stats for log1p targets, fitted on rows that actually train.
+    """Z-score stats for the transformed targets, fitted on rows that train.
 
-    Censored runtimes are included in the runtime stats: they are genuine
-    observations of the upper tail, just inequality-valued, and excluding them
-    would shrink the scale the hinge operates in.
+    Censored runtimes are included: they are genuine upper-tail observations,
+    and excluding them would shrink the scale the hinge operates in.
     """
-    lrt = np.log1p(t_tr["y_rt"][(t_tr["m_rt"] + t_tr["m_cens"]) > 0])
+    lrt = rt_fwd(t_tr["y_rt"][(t_tr["m_rt"] + t_tr["m_cens"]) > 0])
     lpk = np.log1p(t_tr["y_pk"][t_tr["m_pk"] > 0])
     def _ms(v, fallback=(0.0, 1.0)):
         if v.size == 0:
@@ -301,10 +290,10 @@ def _fit_target_stats(t_tr):
 
 
 def _standardize(t, target_stats):
-    """Attach standardized log1p targets to a target dict."""
+    """Attach standardized targets (runtime via `rt_fwd`, packets log1p)."""
     mu_rt, sd_rt = target_stats["runtime"]
     mu_pk, sd_pk = target_stats["packets"]
-    t["z_rt"] = ((np.log1p(t["y_rt"]) - mu_rt) / sd_rt).astype(np.float32)
+    t["z_rt"] = ((rt_fwd(t["y_rt"]) - mu_rt) / sd_rt).astype(np.float32)
     t["z_pk"] = ((np.log1p(t["y_pk"]) - mu_pk) / sd_pk).astype(np.float32)
     return t
 
@@ -312,9 +301,8 @@ def _standardize(t, target_stats):
 def _rank_loss(pred, target, mask, group_ids):
     """RankNet-style pairwise loss inside each state group of the batch.
 
-    Selection only needs the *ordering* of candidates within one state, which a
-    pure regression loss optimizes only indirectly. Pairs are formed between
-    rows of the same group that both have a usable target.
+    Selection only needs the *ordering* of candidates within one state,
+    which a pure regression loss optimizes only indirectly.
     """
     valid = mask > 0
     if valid.sum() < 2:
@@ -341,22 +329,10 @@ def train(X_tr, t_tr, g_tr, X_val, t_val, g_val, *, hidden=128, n_layers=3,
           device="cpu", seed=0, verbose=True):
     """Mini-batch training of the 3-head MLP with censored-runtime handling.
 
-    low_w > 0 reweights the runtime regression rows that fall at/below the
-    training mean (in z-space) so the model spends capacity on the cheap-solve
-    regime the selector actually operates in. That regime spans a tiny slice
-    of the raw runtime axis (0.01-0.5 s vs. a median of ~2.9 s), and an
-    unweighted Huber/log1p fit spends nearly all its capacity on the
-    expensive tail, which is why an unweighted model reports "~0 s" for almost
-    every cheap config. low_w=0 restores the old unweighted behaviour.
-
-    w_cheap > 0 adds a flat extra weight to runtime rows whose raw runtime is
-    below cheap_thresh (default 0.5 s), on top of the low_w gaussian. The
-    gaussian alone peaks at the z-mean (the *median* runtime), so the extreme
-    cheap corner (sub-0.05 s solves) gets ~1.5x less weight than mid-cheap
-    rows and is sacrificed: predictions there are pulled toward the floor and
-    clamp to exactly 0. The flat cheap boost gives that corner equal standing
-    with mid-cheap rows, which is what actually moves the sub-0.05 s
-    predictions off the 0.0 floor.
+    low_w and w_cheap reweight the cheap end of the runtime regression. Both
+    default to 0: they patched the old log1p target's squashed cheap corner,
+    which the log(y + eps) transform fixes properly (reweighting now only
+    costs tail accuracy). Kept as knobs so the ablation can be re-run.
     """
     torch.manual_seed(seed)
     model = CostMLP(in_dim=X_tr.shape[1], hidden=hidden, n_layers=n_layers,
@@ -375,10 +351,8 @@ def train(X_tr, t_tr, g_tr, X_val, t_val, g_val, *, hidden=128, n_layers=3,
     Xt, Xv = _t(X_tr), _t(X_val)
     gt, gv = _t(g_tr, torch.long), _t(g_val, torch.long)
 
-    # Low-end runtime emphasis: weight rows below the z-mean with a gaussian
-    # bump so the cheap-solve regime (where the selector picks) drives the
-    # runtime head as much as the expensive tail does. w_cheap adds a flat
-    # boost for the sub-cheap_thresh rows the gaussian under-serves.
+    # Low-end runtime emphasis: gaussian bump below the z-mean plus a flat
+    # boost under cheap_thresh (see train() docstring).
     if low_w > 0 or w_cheap > 0:
         z = t_tr["z_rt"]
         w_rt = np.ones_like(z, dtype=np.float32)
@@ -517,14 +491,17 @@ def regression_report(model_pack, df, targets, *, device="cpu"):
             "n": int(m.sum()),
             "mae_s": float(np.abs(yp - yt).mean()),
             "medae_s": float(np.median(np.abs(yp - yt))),
-            "mae_log1p": float(np.abs(np.log1p(yp) - np.log1p(yt)).mean()),
-            "r2_log1p": _r2(np.log1p(yt), np.log1p(yp)),
+            "mae_log": float(np.abs(rt_fwd(yp) - rt_fwd(yt)).mean()),
+            "r2_log": _r2(rt_fwd(yt), rt_fwd(yp)),
+            # How often the inverse transform bottoms out (the cheap-corner
+            # fix exists to drive this to zero).
+            "frac_pred_at_floor": float((yp <= 1e-9).mean()),
+            "min_pred_s": float(yp.min()),
             "spearman": _spearman(yt, yp),
         }
     mc = targets["m_cens"] > 0
     if mc.sum():
-        # For censored rows the only defensible check: does the model place them
-        # at or above the observed lower bound?
+        # Censored rows: check the model places them at/above the bound.
         out["runtime_censored"] = {
             "n": int(mc.sum()),
             "frac_at_or_above_bound": float(
@@ -577,12 +554,12 @@ def evaluate_selector(model_pack, df_eval, *, device="cpu",
                       use_oracle_feasibility=False, timeout_thresh=0.5):
     """Compare chosen (rho, tau) with the oracle, per state.
 
-    use_oracle_feasibility=False is the honest setting: candidates are filtered
-    by the model's own timeout head, exactly as at deployment. Passing True
-    reveals ground-truth statuses and is only meaningful as an upper bound.
+    use_oracle_feasibility=False is the deployment path: candidates are
+    filtered by the model's own timeout head. True leaks ground-truth
+    statuses and only serves as an upper bound.
 
-    Oracle runtime is taken over optimal rows; oracle packets over any row with
-    a primal solution, since a censored incumbent is still a shippable result.
+    Oracle runtime is over optimal rows; oracle packets over any row with a
+    primal solution, since a censored incumbent is still shippable.
     """
     from blocks.rho_tau import predict as prd
     rows = []
@@ -645,9 +622,8 @@ def evaluate_selector(model_pack, df_eval, *, device="cpu",
 def _state_from_group(g):
     """Rebuild an inference state dict from a group of rows of one state.
 
-    Histogram/entropy features are copied verbatim from the row instead of
-    being re-derived from a synthetic uniform load, so eval features are bit-
-    identical to training features.
+    Histogram/entropy features are copied verbatim from the row so eval
+    features are bit-identical to training features.
     """
     first = g.iloc[0]
     state = {c: float(first[c]) for c in NUMERIC_FEATURES
@@ -660,17 +636,13 @@ def _state_from_group(g):
 # ------------------------------------------------------------------ split ---
 
 def _group_split(df, val_frac, seed, exclude_env=None):
-    """Stratified grouped split by state group.
+    """Stratified grouped split by state group, drawn per env.
 
-    Splitting by state group keeps a state's (rho, tau) cells on one side of
-    the split — otherwise validation is memorization of its siblings. On top
-    of that, groups are drawn *per env*, so each environment contributes
-    (roughly) its val_frac share to validation instead of a single global
-    shuffle deciding it. With ~30 state groups a plain random draw routinely
-    drops whole environments out of validation (or out of training), which
-    silently biases both early stopping and the reported held-out accuracy
-    toward whichever envs happen to land in val. Environments with a single
-    state group can't be split and stay entirely in training.
+    Splitting by state keeps a state's (rho, tau) cells on one side;
+    drawing per env means each environment contributes (roughly) its
+    val_frac share to validation instead of a global shuffle dropping whole
+    envs out of one side. Envs with a single state group can't be split and
+    stay entirely in training.
     """
     d = df if exclude_env is None else df[df["env"] != exclude_env]
     rng = np.random.RandomState(seed)
@@ -686,8 +658,7 @@ def _group_split(df, val_frac, seed, exclude_env=None):
     keys = d[STATE_COLS].astype(str).agg("|".join, axis=1)
     is_val = keys.isin(val_keys)
     if is_val.sum() == 0:
-        # Degenerate: every env is unsplittable. Fall back to a plain grouped
-        # split so the train/val pair still exists.
+        # Degenerate: fall back to a plain grouped split.
         uniq = np.array(sorted(keys.unique()))
         rng.shuffle(uniq)
         n_val = max(1, int(round(val_frac * len(uniq))))
@@ -709,9 +680,8 @@ def main():
     p.add_argument("--test_env", default=None,
                    help="Leave-one-env-out: hold out this env entirely.")
     p.add_argument("--val_frac", type=float, default=0.15,
-                   help="Fraction of *state groups* held out for validation, "
-                        "drawn per env so every env contributes a validation "
-                        "share (stratified grouped split).")
+                   help="Fraction of *state groups* held out for validation "
+                        "(drawn per env; stratified grouped split).")
     p.add_argument("--seed", type=int, default=5)
     p.add_argument("--epochs", type=int, default=400)
     p.add_argument("--hidden", type=int, default=256)
@@ -723,19 +693,12 @@ def main():
     p.add_argument("--n_models", type=int, default=3,
                    help="Deep-ensemble size; predictions are averaged.")
     p.add_argument("--n_report_models", type=int, default=2,
-                   help="Size of a second ensemble, each member trained on an "
-                        "independent bootstrap resample of the training state "
-                        "groups, used only to score the selector's *already-"
-                        "chosen* (rho, tau) for diagnostics. Never participates "
-                        "in the argmin search, so its predictions aren't "
-                        "subject to the winner's-curse bias an argmin-selected "
-                        "candidate's own ensemble has (see "
-                        "predict.select_rho_tau). Bootstrapping matters: a "
-                        "same-data/different-seed ensemble converges to "
-                        "nearly the same function and barely decorrelates the "
-                        "bias it exists to audit. 0 disables it and "
-                        "diagnostics fall back to the main ensemble (biased "
-                        "low).")
+                   help="Second ensemble (bootstrap-resampled training state "
+                        "groups) used only to re-score the selector's already-"
+                        "chosen (rho, tau) for diagnostics — never in the "
+                        "argmin search, so it avoids the winner's-curse bias "
+                        "of the selecting ensemble (see predict.select_rho_tau)."
+                        " 0 falls back to the main ensemble (biased low).")
     p.add_argument("--censoring", default="drop",
                    choices=["censored", "drop", "penalty"],
                    help="How timelimit rows are labelled (see module docstring). "
@@ -745,29 +708,16 @@ def main():
     p.add_argument("--w_rank", type=float, default=0.3,
                    help="Weight of the within-state pairwise ranking loss.")
     p.add_argument("--w_censor", type=float, default=0.1,
-                   help="Weight of the censored-runtime hinge. Tuned on a held-"
-                        "out grouped split: raising it makes the model respect "
-                        "the '>= timeout' bound but drags the shared trunk "
-                        "upward and degrades runtime accuracy on solves that "
-                        "did finish; 0.1 keeps both.")
-    p.add_argument("--low_w", type=float, default=3.0,
-                   help="Low-end runtime emphasis: how strongly to reweight "
-                        "training rows at/below the runtime mean (z-space "
-                        "gaussian bump) so the model spends capacity on the "
-                        "cheap-solve regime the selector actually picks in. "
-                        "0 disables it. Tuned on a held-out grouped split: it "
-                        "roughly halves the selector's runtime regret on "
-                        "held-out states (median rel. err ~0.26 vs ~1.0) at a "
-                        "small cost to tail accuracy (val runtime r2_log1p "
-                        "0.941 vs 0.951).")
+                   help="Weight of the censored-runtime hinge. Tuned on a "
+                        "held-out split; higher degrades runtime accuracy on "
+                        "solves that did finish.")
+    p.add_argument("--low_w", type=float, default=0.0,
+                   help="Low-end runtime emphasis (z-space gaussian bump at/"
+                        "below the runtime mean). Off by default — a patch "
+                        "for the old log1p target; see train()'s docstring.")
     p.add_argument("--w_cheap", type=float, default=0.0,
-                   help="Extra flat weight for runtime-regression rows with "
-                        "raw runtime below --cheap_thresh, on top of the "
-                        "low_w gaussian. The gaussian peaks at the z-mean "
-                        "(median runtime), so the extreme cheap corner "
-                        "(sub-0.05 s) is under-weighted and its predictions "
-                        "clamp to exactly 0.0; this gives that corner equal "
-                        "standing with mid-cheap rows. 0 disables it.")
+                   help="Extra flat weight for runtime rows below "
+                        "--cheap_thresh. Off by default, same reason.")
     p.add_argument("--cheap_thresh", type=float, default=0.5,
                    help="Raw-runtime cutoff (seconds) for the --w_cheap "
                         "flat weight.")
@@ -838,7 +788,8 @@ def main():
     for t in (t_tr, t_val, t_test):
         if t is not None:
             _standardize(t, target_stats)
-    print(f"Target z-score stats (log1p): runtime mu/sd={target_stats['runtime']}, "
+    print(f"Target z-score stats (runtime {RUNTIME_TRANSFORM}, packets log1p): "
+          f"runtime mu/sd={target_stats['runtime']}, "
           f"packets mu/sd={target_stats['packets']}")
 
     X_tr, feature_stats = build_feature_matrix(tr_df, fit_stats=True)
@@ -865,14 +816,9 @@ def main():
 
     report_models = []
     if args.n_report_models > 0:
-        # Bootstrap-resample by *state group* (not row) so each report model
-        # sees a genuinely different training sample, not just a different
-        # init seed on the identical data. A same-data, different-seed
-        # ensemble converges to nearly the same function (empirically,
-        # ensemble std in z-units was ~0.02-0.05 vs. a target scale of ~1.4)
-        # and so barely decorrelates the argmin-selection noise it exists to
-        # audit; resampling groups gives the report ensemble its own sampling
-        # noise, closer to genuine epistemic uncertainty in sparse regions.
+        # Bootstrap-resample by *state group* (not row): a same-data/
+        # different-seed ensemble converges to nearly the same function and
+        # barely decorrelates the argmin-selection noise being audited.
         print(f"Training {args.n_report_models}x report-only MLP on bootstrap "
               f"resamples (held out of selection, used to de-bias diagnostics) ...")
         boot_rng = np.random.RandomState(args.seed + 2000)
@@ -911,6 +857,8 @@ def main():
         "worker_hist_bins": WORKER_HIST_BINS,
         "rho_grid": rho_grid, "tau_grid": tau_grid,
         "target_stats": target_stats,
+        "runtime_transform": RUNTIME_TRANSFORM,
+        "runtime_eps": RUNTIME_EPS,
         "n_out": N_OUT,
     }
 
@@ -924,6 +872,8 @@ def main():
         "hidden": args.hidden, "n_layers": args.n_layers,
         "dropout": args.dropout, "n_out": N_OUT,
         "target_stats": target_stats,
+        "runtime_transform": RUNTIME_TRANSFORM,
+        "runtime_eps": RUNTIME_EPS,
         "censoring": args.censoring,
         "timeout_thresh": args.timeout_thresh,
         "low_w": args.low_w,
@@ -993,6 +943,8 @@ def main():
             "worker_hist_bins": WORKER_HIST_BINS,
             "rho_grid": rho_grid, "tau_grid": tau_grid,
             "target_stats": {k: list(v) for k, v in target_stats.items()},
+            "runtime_transform": RUNTIME_TRANSFORM,
+            "runtime_eps": RUNTIME_EPS,
             "objective": args.objective,
             "w_runtime": args.w_runtime,
             "w_packets": args.w_packets,

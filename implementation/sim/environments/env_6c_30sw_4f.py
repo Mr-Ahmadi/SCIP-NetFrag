@@ -167,9 +167,7 @@ def env_6c_30sw_4f(state):
                              333: ["AM", "BM", "CM", "DM"],
                              334: ["AN", "BN", "CN", "DN"]}
 
-    # Hops from each worker to each switch, indexed by switch id (a worker's
-    # own ToR is 1), derived by BFS over pSwitchesTopology — same convention
-    # as the other envs.
+    # Hops from each worker to each switch (own ToR = 1), BFS-derived.
     stepsToSwitches = {
         311: [1, 3, 2, 2, 5, 5, 5, 4, 6, 6, 6, 5, 7, 7, 6, 6, 6, 6, 5, 6, 5, 5, 4, 5, 3, 4, 5, 5, 4, 3],
         312: [1, 3, 2, 2, 5, 5, 5, 4, 6, 6, 6, 5, 7, 7, 6, 6, 6, 6, 5, 6, 5, 5, 4, 5, 3, 4, 5, 5, 4, 3],
