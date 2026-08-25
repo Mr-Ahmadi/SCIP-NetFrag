@@ -85,9 +85,9 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
     if not per_solve_rows:
         return []
 
-    # Group by observable pre-choice state; ittr stays a grouping key so each
-    # repetition is an independent regret sample.
-    state_cols = ["env", "ittr", "slot_idx",
+    # Group by observable pre-choice state; ittr is excluded because the
+    # sweep's two repetitions of a state are one state (see train.STATE_COLS).
+    state_cols = ["env", "slot_idx",
                   "num_active_frags", "num_active_workers"]
     buckets = {}
     for r in per_solve_rows:
@@ -106,6 +106,9 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
         worst = max(ok, key=lambda r: r["runtime"])
         best_pk = min(primal, key=lambda r: r["packets"])
         worst_pk = max(primal, key=lambda r: r["packets"])
+        # Oracle-optimal configurations of this state (ties included).
+        argmin_set = {(float(r["rho"]), int(r["tau"])) for r in ok
+                      if abs(r["runtime"] - best["runtime"]) < 1e-9}
 
         # State from the first row of the group; keys absent from older
         # param_sweep data are skipped so `_complete_state` defaults them to 0.
@@ -145,23 +148,32 @@ def _selector_quality(per_solve_rows, model_pack, *, device="cpu",
                         "error": f"{type(e).__name__}: {e}"})
             continue
 
-        # Observed outcome of the selected (rho, tau) pair.
-        chosen = next((r for r in rs
-                       if abs(r["rho"] - sel["rho"]) < 1e-9
-                       and r["tau"] == sel["tau"]), None)
-        chosen_rt = float(chosen["runtime"]) if chosen else None
-        chosen_pk = (float(chosen["packets"])
-                     if chosen and chosen["packets"] else None)
-        regret = (chosen_rt - best["runtime"]) if chosen_rt is not None else None
-        pk_regret = (chosen_pk - best_pk["packets"]) if chosen_pk is not None else None
-        denom = (worst["runtime"] - best["runtime"]) or 1e-9
-        gap = ((worst["runtime"] - chosen_rt) / denom) if chosen_rt is not None else None
+        # Observed outcome of the selected pair, averaged over the sweep's
+        # repetitions of this state (no single repetition privileged).
+        matches = [r for r in rs
+                   if abs(r["rho"] - sel["rho"]) < 1e-9
+                   and r["tau"] == sel["tau"]]
+        if not matches:
+            continue
+        chosen_rt = float(np.mean([m["runtime"] for m in matches]))
+        match_pks = [float(m["packets"]) for m in matches if m["packets"]]
+        chosen_pk = float(np.mean(match_pks)) if match_pks else None
+        # Conservative: any repetition hitting the limit flags the pick.
+        status = ("optimal" if all(m["status"] == "optimal" for m in matches)
+                  else "timelimit")
+        regret = chosen_rt - float(best["runtime"])
+        pk_regret = (chosen_pk - float(best_pk["packets"])
+                     if chosen_pk is not None else None)
+        denom = (float(worst["runtime"]) - float(best["runtime"])) or 1e-9
+        gap = (float(worst["runtime"]) - chosen_rt) / denom
         out.append({**base,
                     "rho_star": float(sel["rho"]), "tau_star": int(sel["tau"]),
                     "pred_runtime": float(sel["pred_runtime"]),
                     "pred_packets": float(sel["pred_packets"]),
                     "p_timeout": float(sel["p_timeout"]),
-                    "chosen_status": (chosen or {}).get("status"),
+                    "chosen_status": status,
+                    "argmin_pick": ((float(sel["rho"]), int(sel["tau"]))
+                                    in argmin_set),
                     "chosen_runtime": chosen_rt, "chosen_packets": chosen_pk,
                     "regret": regret, "packet_regret": pk_regret,
                     "gap_to_worst": gap})
@@ -407,6 +419,10 @@ def _summarize(qualities):
         "std_regret_s": float(np.std(regrets)) if regrets else None,
         "frac_optimal_pick": (float(np.mean([r <= 1e-9 for r in regrets]))
                               if regrets else None),
+        "frac_argmin_pick": (float(np.mean([q["argmin_pick"] for q in qualities
+                                            if q.get("argmin_pick") is not None]))
+                             if any(q.get("argmin_pick") is not None
+                                    for q in qualities) else None),
         "mean_gap_to_worst": float(np.mean(gaps)) if gaps else None,
         "frac_worst_avoided": (float(np.mean([g > 0.5 for g in gaps]))
                                if gaps else None),
@@ -539,7 +555,7 @@ def run_rho_tau_model():
     for q in qualities:
         run.observe(
             model="FlexINA-MLP", env=q["env"],
-            x=f"ittr={q['ittr']},slot={q['slot_idx']}",
+            x=f"slot={q['slot_idx']}",
             ittr=int(q["ittr"]),
             packets=q.get("chosen_packets"), runtime=q.get("chosen_runtime"),
             construction_time_s=None,

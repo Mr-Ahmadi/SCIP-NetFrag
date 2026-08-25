@@ -80,16 +80,20 @@ NUMERIC_FEATURES = [
 NUMERIC_FEATURES += TOPOLOGY_FEATURES
 
 # Deliberately NOT features: T_max_1/T_max_2 (deterministic of slot_idx/tau)
-# and ittr (pure repetition index; kept only as a grouping key).
+# and ittr (pure repetition index; excluded from features and splits — see
+# STATE_COLS).
 
 # Per-worker histogram bins (capped for unseen topologies).
 WORKER_HIST_BINS = 8
 
 FEATURE_DIM = len(NUMERIC_FEATURES) + WORKER_HIST_BINS
 
-# One state = one solver invocation context; splits must keep a state
-# intact, otherwise validation is memorization of its siblings.
-STATE_COLS = ["env", "ittr", "slot_idx"]
+# One state = one observable load configuration. `ittr` is excluded on
+# purpose: environments are deterministic, so the sweep's two repetitions of
+# a state carry identical feature vectors — splitting on them would put an
+# exact duplicate of every validation row into training and turn validation
+# into a memorization test.
+STATE_COLS = ["env", "slot_idx"]
 
 N_OUT = 3  # [runtime_z, packets_z, timeout_logit]
 
@@ -579,25 +583,39 @@ def evaluate_selector(model_pack, df_eval, *, device="cpu",
         chosen = g[(np.isclose(g["rho"], sel["rho"])) & (g["tau"] == sel["tau"])]
         if chosen.empty:
             continue
-        c = chosen.iloc[0]
         ok = g[g["status"] == "optimal"]
         primal = g[g["packets"] > 0]
         if ok.empty or primal.empty:
             continue
         best_rt, worst_rt = float(ok["runtime"].min()), float(ok["runtime"].max())
         best_pk = float(primal["packets"].min())  # fewest packets = max reduction
-        chosen_rt = float(c["runtime"])
-        chosen_pk = float(c["packets"]) if c["packets"] > 0 else None
+        # Did the pick match an oracle-optimal *configuration*? With both
+        # repetitions pooled, chosen_runtime averages solver noise so a
+        # zero-regret tie is unreachable; matching the argmin config is the
+        # well-defined version of "picked the optimum".
+        argmin = ok[np.isclose(ok["runtime"], best_rt)]
+        argmin_pick = bool(
+            len(argmin) and ((np.isclose(argmin["rho"], sel["rho"]))
+                             & (argmin["tau"] == sel["tau"])).any())
+        # A state spans both repetitions of the sweep; score the pick with
+        # their mean so no single repetition is privileged.
+        chosen_rt = float(chosen["runtime"].mean())
+        pk_rows = chosen.loc[chosen["packets"] > 0, "packets"]
+        chosen_pk = float(pk_rows.mean()) if len(pk_rows) else None
+        # Conservative: if any repetition hit the limit, flag it.
+        status = ("optimal" if (chosen["status"] == "optimal").all()
+                  else "timelimit")
         rows.append({
             "state": key, "rho_star": sel["rho"], "tau_star": sel["tau"],
-            "chosen_status": c["status"],
+            "chosen_status": status,
             "chosen_runtime": chosen_rt, "chosen_packets": chosen_pk,
             "best_runtime": best_rt, "worst_runtime": worst_rt,
             "best_packets": best_pk,
             "regret": chosen_rt - best_rt,
             "packet_regret": (chosen_pk - best_pk) if chosen_pk is not None else None,
             "gap_to_worst": (worst_rt - chosen_rt) / max(1e-9, worst_rt - best_rt),
-            "timed_out": c["status"] != "optimal",
+            "argmin_pick": argmin_pick,
+            "timed_out": status != "optimal",
         })
     if not rows:
         return None
@@ -615,6 +633,7 @@ def evaluate_selector(model_pack, df_eval, *, device="cpu",
         "mean_packet_regret": float(pk.mean()) if len(pk) else None,
         "frac_worst_avoided": float((r["gap_to_worst"] > 0.5).mean()),
         "frac_optimal_pick": float((r["regret"] <= 1e-9).mean()),
+        "frac_argmin_pick": float(r["argmin_pick"].mean()),
         "frac_timeout_pick": float(r["timed_out"].mean()),
     }
 
